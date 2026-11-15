@@ -8,7 +8,7 @@ local function read_config()
   if cache then
     return cache
   end
-  local path = require("repl.config").get().project_paths or CONFIG_PATH
+  local path = require("repl.config").get().python_paths or CONFIG_PATH
   local fh = io.open(path, "r")
   if not fh then
     cache = { core = {}, projects = {} }
