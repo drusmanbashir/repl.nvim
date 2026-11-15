@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+kitty="${NVIM_SLIME_KITTY_BIN:-${KITTY_BIN:-kitty}}"
+socket="${DL_REPL_SOCKET:-${DL_REPL_SOCKET_RESOLVED:-}}"
+if [ -z "$socket" ]; then
+  socket="$("$root/bin/dl_repl_paths.py" --get socket:python)"
+fi
+title="${DL_REPL_WINDOW_TITLE:-python-repl-1}"
+class="${DL_REPL_WINDOW_CLASS:-ipython-repl}"
+command="${DL_REPL_COMMAND:-${NVIM_REPL_COMMAND:-}}"
+start_command="$root/bin/slime-repl-restart start-ipython"
+no_focus="${DL_REPL_NO_FOCUS:-0}"
+
+if [ -z "$socket" ] || ! command -v "$kitty" >/dev/null 2>&1; then
+  printf 'repl-launch: kitty socket and executable are required\n' >&2
+  exit 1
+fi
+
+args=(--env "DL_REPL_SOCKET=$socket" --env "DL_ROLE=repl" --env "DL_REPL_FAMILY=${DL_REPL_FAMILY:-python}" \
+  --env "DL_REPL_WINDOW_TITLE=$title" --cwd "$PWD")
+if [ -n "$command" ]; then
+  args+=(--env "NVIM_REPL_COMMAND=$command")
+else
+  args+=(--env NVIM_REPL_COMMAND)
+fi
+if [ -n "${NVIM_SLIME_IPYTHON_EXECUTABLE:-}" ]; then
+  args+=(--env "NVIM_SLIME_IPYTHON_EXECUTABLE=$NVIM_SLIME_IPYTHON_EXECUTABLE")
+else
+  args+=(--env NVIM_SLIME_IPYTHON_EXECUTABLE)
+fi
+if [ "$no_focus" = "1" ]; then
+  args+=(--dont-take-focus)
+fi
+
+if "$kitty" @ --to "$socket" ls >/dev/null 2>&1; then
+  if "$kitty" @ --to "$socket" ls --match "title:^${title}$" >/dev/null 2>&1; then
+    if [ "$no_focus" != "1" ]; then
+      "$kitty" @ --to "$socket" focus-window --match "title:^${title}$"
+    fi
+    exit 0
+  fi
+  "$kitty" @ --to "$socket" launch --type=os-window \
+    --os-window-class "$class" --os-window-title "$title" --title "$title" \
+    "${args[@]}" bash -lc "export KITTY_SHELL_INTEGRATION=no-title; exec $start_command"
+else
+  printf 'repl-launch: no Kitty instance is listening on %s; start Kitty with that socket first\n' "$socket" >&2
+  exit 1
+fi

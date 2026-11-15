@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+root="$(cd -- "$script_dir/.." && pwd)"
+pressing_window_id=""
+if [ "${1:-}" = "--window-id" ]; then
+	case "${2:-}" in
+	"" | *[!0-9]* | 0) exit 3 ;;
+	esac
+	pressing_window_id="$2"
+	shift 2
+fi
+registry_arg="${1:-}"
+# Same order as host_paths.lua kitty_bin(): override, then ~/.local/bin/kitty
+# (Sinclair's build, not always on a non-interactive PATH), then PATH.
+kitty_bin="${DL_FOCUS_KITTY_BIN:-${KITTY_BIN:-}}"
+if [ -z "$kitty_bin" ]; then
+	if [ -x "$HOME/.local/bin/kitty" ]; then
+		kitty_bin="$HOME/.local/bin/kitty"
+	else
+		kitty_bin="$(command -v kitty || echo kitty)"
+	fi
+fi
+osascript_bin="${DL_FOCUS_OSASCRIPT_BIN:-osascript}"
+xdotool_bin="${DL_FOCUS_XDOTOOL_BIN:-xdotool}"
+
+mark_implementation() {
+	local marker="${DL_FOCUS_SELECTOR_MARKER:-}"
+	[ -n "$marker" ] || return 0
+	local temporary="${marker}.tmp.$$"
+	printf '%s\n' "$1" >"$temporary"
+	mv -f -- "$temporary" "$marker"
+}
+
+# --------------------------------------------------------------------------
+# Compiled fast path (bin/src/kitty-focus-back.c). Strictly optional: if anything
+# below is not exactly right we fall through to the Python path unchanged, so an
+# unbuilt or stale host is slower, never broken.
+#
+# Every guard here is a bash builtin -- no process is spawned to decide whether
+# to use the binary, because spawning one would cost more than the binary saves.
+#
+#   registry set    the caller pinned a specific registry; the helper only reads
+#                   the env-primed one, so let Python handle it.
+#   -x              not built on this host (the artifact is deliberately not
+#                   committed: Sinclair and the Mac differ).
+#   -nt             sources newer than the binary => somebody edited the C and
+#                   did not rebuild. A missing binary is safe; a STALE one is
+#                   not, because an old helper against a newer registry schema
+#                   can silently focus the wrong window.
+#   PROTOCOL        read with $(<file), a redirection rather than a `cat`, so it
+#                   costs no fork. The helper compares it to its compiled-in
+#                   value and misses on mismatch -- a second, independent guard
+#                   against a stale binary that happens to have a newer mtime.
+#                   The -r test is not redundant with the -nt tests below: a
+#                   MISSING file is "not newer than" everything, so all the
+#                   -nt guards pass vacuously and we would reach $(<file) on a
+#                   file that is not there. Under `set -e` that aborts this
+#                   script outright -- skipping the Python fallback entirely and
+#                   handing kitty-focus-edit an rc that sends it into its window
+#                   search. Verified, not theoretical.
+#
+# rc 0 = focused, rc 4 = denied by policy: both are final, and the caller
+# (sinclair/kitty-focus-edit) must not run its fallback chain. Anything else falls
+# through to Python below.
+if [ -z "$registry_arg" ] && [ -n "${DL_FOCUS_BACK_BIN:-}" ] && [ -x "$DL_FOCUS_BACK_BIN" ] &&
+	[ -r "$root/bin/src/PROTOCOL" ] &&
+	[ ! "$root/bin/src/kitty-focus-back.c" -nt "$DL_FOCUS_BACK_BIN" ] &&
+	[ ! "$root/bin/src/kitty-focus-json.c" -nt "$DL_FOCUS_BACK_BIN" ] &&
+	[ ! "$root/bin/src/kitty-focus-json.h" -nt "$DL_FOCUS_BACK_BIN" ] &&
+	[ ! "$root/bin/src/kitty-focus-transport.c" -nt "$DL_FOCUS_BACK_BIN" ] &&
+	[ ! "$root/bin/src/kitty-focus-transport.h" -nt "$DL_FOCUS_BACK_BIN" ] &&
+	[ ! "$root/bin/src/jsmn.h" -nt "$DL_FOCUS_BACK_BIN" ] &&
+	[ ! "$root/bin/src/PROTOCOL" -nt "$DL_FOCUS_BACK_BIN" ]; then
+	compiled_rc=0
+	compiled_args=()
+	if [ -n "$pressing_window_id" ]; then
+		compiled_args=(--window-id "$pressing_window_id")
+	fi
+	DL_FOCUS_BACK_PROTOCOL_EXPECT="$(<"$root/bin/src/PROTOCOL")" \
+		"$DL_FOCUS_BACK_BIN" "${compiled_args[@]}" || compiled_rc=$?
+	case "$compiled_rc" in
+	0 | 4)
+		mark_implementation compiled
+		exit "$compiled_rc"
+		;;
+	esac
+fi
+
+# One interpreter does the whole job -- path resolution happens in-process below
+# rather than via extra dl_repl_paths.py subprocesses. The positional registry
+# arg is a real interface (sinclair/kitty-focus-slime-source execs us with "$@",
+# and repl_focus_family_registry_smoke.sh passes a registry path there), so pass
+# it through empty-or-set and let Python fall back to the resolver.
+python_rc=0
+python3 "$root/bin/kitty_focus_slime_source.py" "$registry_arg" "$kitty_bin" "$osascript_bin" "$xdotool_bin" "$root" "$pressing_window_id" || python_rc=$?
+case "$python_rc" in
+0 | 4) mark_implementation python ;;
+esac
+exit "$python_rc"
