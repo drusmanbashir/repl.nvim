@@ -65,10 +65,10 @@ The host configuration at `~/scripts/nvim/lua/user/repl_plugin.lua` documents th
 
 The existing send/focus actions are available through `repl.backend`, `repl.actions` and `repl.focus_route`. `M-x` sends a cell; `M-X` sends a SECTION block; `M-e` sends a line or selection; `M-k` peeks; `M-R` restarts; `M-h` focuses the paired destination. The Python continuation state belongs to each target and resets on restart.
 
-For reverse focus from Kitty, invoke the bundled `bin/kitty-focus-slime-source --window-id <active Kitty child ID>`. The existing host Kitty/desktop shortcuts remain supported through thin forwarding scripts. Unbound terminals are a no-op; bindings do not expire with age.
+For reverse focus from Kitty, invoke the bundled `bin/kitty-focus-slime-source --window-id <active Kitty child ID>`. The existing host Kitty/desktop shortcuts remain supported by their desktop entrypoints. Unbound terminals are a no-op; bindings do not expire with age.
 
 ## Verification
 
-The migration reuses `~/scripts/nvim/tests/repl_send_battery.sh` for the 22 source-preservation and IPython execution cases, and `~/scripts/oracle/adapters/slime/run.sh` for real Kitty/Neovim behavior on hidden displays. The capture battery is a payload check; Oracle supplies the live transport and focus evidence. Test results are reported from actual runs, not inferred from this document.
+Run `tools/test --list` to list the plugin-owned checks. `tools/test repl_send_battery.sh` covers the 22 source-preservation and IPython execution cases. Run `~/scripts/oracle/adapters/slime/run.sh` for real Kitty/Neovim behavior on hidden displays. The capture battery is a payload check; Oracle supplies the live transport and focus evidence. Test results are reported from actual runs, not inferred from this document.
 
 Run `:help repl.nvim` for setup and keys. Linux is the current verification host; macOS live focus/launch behavior remains unverified. The hidden-display gate cannot verify physical monitor identity; host placement remains outside the plugin.

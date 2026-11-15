@@ -1094,11 +1094,11 @@ function M.setup()
       end
     end
 
-    local function move_cursor_down_after_send()
-      local current = vim.fn.line(".")
-      local target = math.min(current + 1, vim.fn.line("$"))
-      vim.api.nvim_win_set_cursor(0, { target, 0 })
-      vim.cmd("normal! zz")
+    local function move_cursor_down_after_send(win, row)
+      local buf = vim.api.nvim_win_get_buf(win)
+      local target = math.min(row + 1, vim.api.nvim_buf_line_count(buf))
+      vim.api.nvim_win_set_cursor(win, { target, 0 })
+      vim.api.nvim_win_call(win, function() vim.cmd("normal! zz") end)
     end
 
     local function send_motion()
@@ -1110,6 +1110,7 @@ function M.setup()
     end
 
     local function send_import_for_symbol()
+      local win, row = vim.api.nvim_get_current_win(), vim.fn.line(".")
       if vim.bo.filetype ~= "python" then
         vim.notify("Auto-import send only works in python buffers", vim.log.levels.WARN)
         return
@@ -1123,21 +1124,22 @@ function M.setup()
       end
 
       if send_slime_text(table.concat(import_block, "\n") .. "\r") then
-        move_cursor_down_after_send()
+        move_cursor_down_after_send(win, row)
         vim.cmd("normal! ^")
       end
     end
 
     local function send_current_line_and_move()
+      local win, row = vim.api.nvim_get_current_win(), vim.fn.line(".")
       local line = vim.api.nvim_get_current_line()
 
       if send_to_dap_repl(line, true) then
-        move_cursor_down_after_send()
+        move_cursor_down_after_send(win, row)
         return
       end
 
       if send_slime_text(line .. "\r") then
-        move_cursor_down_after_send()
+        move_cursor_down_after_send(win, row)
       end
     end
 

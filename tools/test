@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+case "${1:---help}" in
+--help|-h)
+  printf 'Run a repl.nvim test from tests/.\nUsage: tools/test --list | TEST_FILE [ARGS...]\nNVIM_BIN selects Neovim; PYTHON_BIN selects Python.\n'
+  exit 0 ;;
+--list)
+  for file in "$root"/tests/*.lua "$root"/tests/*.sh "$root"/tests/*.py; do
+    [[ -f "$file" ]] && basename "$file"
+  done
+  exit 0 ;;
+esac
+name="$1"; shift
+[[ "$name" = "$(basename -- "$name")" && -f "$root/tests/$name" ]] || { echo "Unknown test: $name" >&2; exit 2; }
+cd "$root"
+case "$name" in
+*.lua) exec "${NVIM_BIN:-nvim}" --headless -u NONE -l "$root/tests/$name" "$@" ;;
+*.sh) exec bash "$root/tests/$name" "$@" ;;
+*.py) exec "${PYTHON_BIN:-python3}" "$root/tests/$name" "$@" ;;
+*) echo "Unsupported test: $name" >&2; exit 2 ;;
+esac

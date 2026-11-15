@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Shell-side port of nvim/lua/user/repl/paths.lua.
+"""Shell-side port of lua/repl/paths.lua.
 
 Same rules, same outputs. The two implementations are pinned together by
-nvim/tests/repl_paths_parity_smoke.sh -- if you change one, change the other in
+tests/repl_paths_parity_smoke.sh -- if you change one, change the other in
 the same commit or that test fails.
 
 Importable (``from dl_repl_paths import socket``) and runnable::

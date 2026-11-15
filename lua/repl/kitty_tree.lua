@@ -270,7 +270,7 @@ function M.window(listen_on, window_id)
   return nil, string.format("kitty window %d not found on %s", window_id, tostring(listen_on))
 end
 
---- Test seam: nvim/tests/kitty_tree_cache_smoke.sh asserts on these counters.
+--- Test seam: tests/kitty_tree_cache_smoke.sh asserts on these counters.
 function M._test_stats()
   return vim.deepcopy(stats)
 end

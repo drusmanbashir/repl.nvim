@@ -124,9 +124,6 @@ end
 
 do
   notices = {}
-  package.loaded["user.notebook.neopyter_window"] = {
-    focus_lab = function() return true end,
-  }
   router(false, "neopyter", "lab")
   route.focus(0)
   check("a raised Lab says nothing", #notices == 0, vim.inspect(notices))

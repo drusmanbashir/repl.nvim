@@ -128,7 +128,7 @@ def raise_os_window(platform_window_id):
 
 def kitty_socket_path(listen_on):
     """Filesystem/abstract path for a `unix:` listen_on, mirroring socket_path()
-    in nvim/lua/user/repl/focus.lua: a leading `@` after `unix:` is the Linux
+    in lua/repl/focus.lua: a leading `@` after `unix:` is the Linux
     abstract namespace (leading NUL byte); anything else is a pathname socket."""
     path = listen_on[len("unix:"):] if listen_on.startswith("unix:") else listen_on
     if path[:1] == "@":

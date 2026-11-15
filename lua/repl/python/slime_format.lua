@@ -1,6 +1,6 @@
 --- Python REPL payload formatting for the slime send path
 --- (`SlimeOverride_EscapeText_python`) and iron's python repl `format`.
---- Battery (run after every change here): bash nvim/tests/repl_send_battery.sh
+--- Battery (run after every change here): bash tests/repl_send_battery.sh
 --- Contract — see REPL_ROUTING.md § `M-x` cell-send contract (python).
 ---
 --- Slime path, bracketed paste on (`ipython_text` -> `paste_lines`). Operator

@@ -1,5 +1,5 @@
 # FUNCTIONS.md
-Scope: `bin/`, `lua/`, `plugin/`, `python/`, `tests/`
+Scope: `bin/`, `lua/`, `plugin/`, `python/`, `tests/`, `tools/`, `!tests/repl_send_battery/fixtures/`, `!tests/repl_send_battery/seeds/`, `!tests/repl_send_battery/stubs/`
 
 ## Runtime commands
 - `bin/repl-launch`: launch or reuse the configured external Kitty REPL; receives family, command, environment and socket through environment variables.
@@ -49,3 +49,28 @@ Scope: `bin/`, `lua/`, `plugin/`, `python/`, `tests/`
 The library entries for `repl.dap_sidecar_backend`, `repl.focus_route`,
 `repl.kitty_tree` and `repl.peek` expose their existing `M._test` observation
 helpers. See those library entries for their owning files.
+
+## Test instruments
+- `tools/test`: run one top-level test by filename; --list discovers tests, --help describes invocation.
+- `tests/iron_ondemand_dapui_poison_smoke.lua`: iron ondemand dapui poison smoke; standalone plugin contract or payload instrument.
+- `tests/jump_trace_index_semantics_smoke.sh`: jump trace index semantics smoke; standalone plugin contract or payload instrument.
+- `tests/jump_trace_last_repl_tail_smoke.sh`: jump trace last repl tail smoke; standalone plugin contract or payload instrument.
+- `tests/jump_trace_last_traceback_smoke.sh`: jump trace last traceback smoke; standalone plugin contract or payload instrument.
+- `tests/jump_trace_samefile_cell_smoke.sh`: jump trace samefile cell smoke; standalone plugin contract or payload instrument.
+- `tests/kitty_tree_cache_smoke.lua`: kitty tree cache smoke; standalone plugin contract or payload instrument.
+- `tests/kitty_tree_cache_smoke.sh`: kitty tree cache smoke; standalone plugin contract or payload instrument.
+- `tests/lib/private_state.lua`: private state; standalone plugin contract or payload instrument.
+- `tests/repl_focus_route_contract.lua`: repl focus route contract; standalone plugin contract or payload instrument.
+- `tests/repl_paths_parity_smoke.sh`: repl paths parity smoke; standalone plugin contract or payload instrument.
+- `tests/repl_peek_paint_contract.lua`: repl peek paint contract; standalone plugin contract or payload instrument.
+- `tests/repl_peek_probe_contract.lua`: repl peek probe contract; standalone plugin contract or payload instrument.
+- `tests/repl_peek_server_contract.lua`: repl peek server contract; standalone plugin contract or payload instrument.
+- `tests/repl_route_exclusivity_contract.lua`: repl route exclusivity contract; standalone plugin contract or payload instrument.
+- `tests/repl_send_battery/capture.lua`: capture; standalone plugin contract or payload instrument.
+- `tests/repl_send_battery/fake_kitty.py`: fake kitty; standalone plugin contract or payload instrument.
+- `tests/repl_send_battery/ipython_probe.py`: ipython probe; standalone plugin contract or payload instrument.
+- `tests/repl_send_battery/judge.py`: judge; standalone plugin contract or payload instrument.
+- `tests/repl_send_battery/paste_lines_unit.lua`: paste lines unit; standalone plugin contract or payload instrument.
+- `tests/repl_send_battery/prove_red.sh`: prove red; standalone plugin contract or payload instrument.
+- `tests/repl_send_battery.sh`: repl send battery; standalone plugin contract or payload instrument.
+- `tests/slime_python_format_smoke.lua`: slime python format smoke; standalone plugin contract or payload instrument.

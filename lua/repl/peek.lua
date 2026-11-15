@@ -387,7 +387,7 @@ end
 
 -- ===== in-REPL server (the quiet route) =====
 
---- The REPL's own socket, or nil. `nvim/python/repl_peek_server.py` names it
+--- The REPL's own socket, or nil. `python/repl_peek_server.py` names it
 --- after the kitty window / tmux pane the REPL runs in -- the two things the
 --- slime binding already holds -- so no handshake is needed to find it.
 ---

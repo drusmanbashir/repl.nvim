@@ -7,7 +7,7 @@
 -- `/tmp/dl-repl-kitty-501.sock`, and focus state was split between `/tmp` and
 -- `$TMPDIR`. Every consumer must call this module; the shell side calls the
 -- byte-identical port in `bin/dl_repl_paths.py`, pinned by
--- `nvim/tests/repl_paths_parity_smoke.sh`.
+-- `tests/repl_paths_parity_smoke.sh`.
 --
 -- Invariant: on Linux every value here is byte-identical to what the old
 -- inline expressions produced, so Sinclair is unaffected.
