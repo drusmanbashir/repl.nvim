@@ -1,0 +1,293 @@
+{
+ "about": "Expected-outcome table for tests/repl_send_battery.sh. Authority: the M-x cell-send contract in the source REPL documentation 'M-x cell-send contract (python)' (contract = its numbered items) and the operator rulings of 2026-10-02 ('DO NOT SKIP LINES TO PASS INTO REPL'; M-x is a faithful pipe: IPython ends as if the file ran top to bottom; a cell continued by a deeper next cell is held; indented `# %%` splits cells; iron out of scope). Each step feeds `keys` through the real mapping (after placing the cursor, when given). `source` = the fixture lines the payload must carry, every line in order (indentation may shift unless `verbatim`). `expect` = what the real IPython must report afterwards: state idle (ran, back at In[]) or waiting (held at a continuation prompt); names that must exist; values = expression -> repr; absent names; errors IPython must raise (default none).",
+ "cases": [
+  {
+   "id": "V01",
+   "fixture": "V01_step_pipeline.py",
+   "structure": "first cell of a module ends with a bare `if __name__ == \"__main__\":`; the guard's body is the next, indented cell; the cell after that is back at top level",
+   "provenance": "~/code/regex1/report_parser/repl/step_pipeline.py:1-115 (byte copy)",
+   "decision": "the next cell starts deeper than this one, so the module cell (ending in the bare guard) is held; the body cell continues it unshifted and the whole block runs; the following cell is dedented and runs at top level",
+   "contract": "1, 2, 3, 5; ruling 2026-10-02",
+   "purpose": "every line of a module cell ending in a bare __main__ guard reaches IPython, IPython holds the guard open, the body cell completes it, the next cell runs at top level",
+   "steps": [
+    {"cursor": [1, 0], "keys": "<M-x>", "source": [2, 58], "cursor_after": 60, "verbatim": true, "expect": {"state": "waiting", "absent": ["fired", "MENTION_COLS", "apply_rule"]}},
+    {"keys": "<M-x>", "source": [60, 98], "cursor_after": 100, "verbatim": true, "expect": {"state": "idle", "names": ["fired", "mentions_frame", "recos_frame", "apply_rule", "MENTION_COLS", "RECO_COLS", "NO_EFFECT", "ReportClassifier", "clin_rules", "imaging_negation_prefixes", "load_training_subset", "cfg", "clf", "subset"], "values": {"LLM_GATE": "True", "subset.shape": "(10, 6)"}}},
+    {"keys": "<M-x>", "source": [100, 114], "expect": {"state": "idle", "names": ["outs"], "values": {"summary.shape": "(10, 8)", "bool(summary['img_ok'].all())": "True"}, "absent": ["ROW"]}}
+   ]
+  },
+  {
+   "id": "V02",
+   "fixture": "V02_guard_with_body.py",
+   "structure": "a `__main__` guard with its body, split into two cells by an indented `    # %%`; blank lines, a lambda; last line indented",
+   "provenance": "~/code/fran/fran/evaluation/losses.py:383-399",
+   "decision": "an indented `# %%` is a cell boundary; the guard cell is held because the next sub-cell starts deeper; that sub-cell continues the guard unshifted and the guard runs",
+   "contract": "1, 2, 3, 4, 7; rulings 2026-10-02",
+   "purpose": "a guard body split by an indented `# %%` runs as one block once its second part is sent, blank lines included",
+   "seed": "V02.py",
+   "steps": [
+    {"cursor": [5, 0], "keys": "<M-x>", "source": [4, 16], "cursor_after": 18, "verbatim": true, "expect": {"state": "waiting", "absent": ["P", "conf", "fg_classes"]}},
+    {"keys": "<M-x>", "source": [18, 20], "cursor_after": 21, "verbatim": true, "expect": {"state": "idle", "names": ["P", "conf", "loss_params", "targ", "pred", "target", "loss_func", "loss"], "values": {"fg_classes": "1", "type(softmax_helper).__name__": "'function'"}}}
+   ]
+  },
+  {
+   "id": "V03",
+   "fixture": "V03_section_comment_then_call.py",
+   "structure": "body-only cell: leading blank line, column-0 `# SECTION:` comment, indented statements, a multi-line call whose `)` reaches column 0 after the shift",
+   "provenance": "~/code/fran/fran/inference/cascade.py:657-673",
+   "decision": "the shift is taken from the first CODE line (not the comment); a column-0 closing bracket continues the call",
+   "contract": "1, 2, 5",
+   "purpose": "a SECTION-headed body cell is shifted left by its first code line and its multi-line call stays one statement",
+   "seed": "V03.py",
+   "steps": [
+    {"cursor": [7, 0], "keys": "<M-x>", "source": [4, 20], "cursor_after": 21, "expect": {"state": "idle", "names": ["run_w1", "spec", "overwrite", "W"], "values": {"debug_": "True", "devices": "[0]", "safe_mode": "False"}}}
+   ]
+  },
+  {
+   "id": "V04",
+   "fixture": "V04_nested_def_if_else.py",
+   "structure": "def nested in the guard body: if/else, for + if/else, a blank line inside the def, multi-line prints, return",
+   "provenance": "~/code/fran/fran/inference/cascade.py:684-711",
+   "decision": "nested blocks keep their relative indentation after the shift; a blank line inside the def does not end it; `else` stays attached",
+   "contract": "1, 2, 5",
+   "purpose": "a nested def with if/else and for/if/else inside survives the shift and behaves as written",
+   "seed": "V04.py",
+   "steps": [
+    {"cursor": [6, 0], "keys": "<M-x>", "source": [4, 31], "cursor_after": 32, "expect": {"state": "idle", "values": {"[p.name for p in filter_existing_files(['a.nii.gz', 'b.nii.gz'], Path('v04'))]": "['a.nii.gz']"}}}
+   ]
+  },
+  {
+   "id": "V05",
+   "fixture": "V05_if_elif_else_blank.py",
+   "structure": "body-only `if` / blank line / `elif` / `else` chain with a multi-line call",
+   "provenance": "~/code/label_analysis/label_analysis/overlap/core.py:1580-1590",
+   "decision": "after the shift `elif`/`else` sit at column 0 after a blank line and must stay part of the same if-statement",
+   "contract": "1, 2, 5",
+   "purpose": "an if/elif/else chain with a blank line before elif runs as one statement and takes the right branch",
+   "seed": "V05.py",
+   "steps": [
+    {"cursor": [5, 0], "keys": "<M-x>", "source": [4, 14], "cursor_after": 15, "expect": {"state": "idle", "values": {"(S.dsc_overall, S.jac_overall)": "(0.0, 0.0)"}}}
+   ]
+  },
+  {
+   "id": "V06",
+   "fixture": "V06_try_two_excepts.py",
+   "structure": "try / except A: raise / blank line / except B with an f-string concatenation and a nested dict literal",
+   "provenance": "~/code/fran/fran/preprocessing/regionbounded.py:765-800",
+   "decision": "a second `except` after a blank line continues the same try; nested brackets span many lines",
+   "contract": "1, 2, 5",
+   "purpose": "a try with two except clauses separated by a blank line runs as one statement and the right handler fires",
+   "seed": "V06.py",
+   "steps": [
+    {"cursor": [6, 0], "keys": "<M-x>", "source": [4, 39], "cursor_after": 40, "expect": {"state": "idle", "values": {"len(process_result)": "1", "process_result[0]['ok']": "False", "process_result[0]['_preprocess_error']['error_type']": "'ValueError'", "process_result[0]['fn_name']": "'img_1.pt'"}}}
+   ]
+  },
+  {
+   "id": "V07",
+   "fixture": "V07_try_then_sibling_if.py",
+   "structure": "try/except/raise, then a sibling if-block holding a for/if, an `# end` comment and a whitespace-only line at the end",
+   "provenance": "~/code/fran/fran/preprocessing/fixed_spacing.py:831-850",
+   "decision": "two compound statements in a row; a trailing comment and whitespace-only line must not stop the cell executing",
+   "contract": "1, 2, 5",
+   "purpose": "a try block followed by a sibling if-block both run and the trailing comment lines do not leave IPython waiting",
+   "seed": "V07.py",
+   "steps": [
+    {"cursor": [5, 0], "keys": "<M-x>", "source": [4, 23], "cursor_after": 24, "expect": {"state": "idle", "values": {"process_hdf5_result": "['shard0.h5']", "Path('v07/images').exists()": "False"}}}
+   ]
+  },
+  {
+   "id": "V08",
+   "fixture": "V08_decorated_def.py",
+   "structure": "a decorated def nested in the guard body, then a call to it",
+   "provenance": "~/code/label_analysis/label_analysis/totalseg.py:429-433",
+   "decision": "the decorator line opens the definition; the call after it is a new statement",
+   "contract": "1, 2, 5",
+   "purpose": "a decorated nested def is defined with its decorator applied and the call after it runs",
+   "seed": "V08.py",
+   "steps": [
+    {"cursor": [5, 0], "keys": "<M-x>", "source": [4, 8], "cursor_after": 9, "expect": {"state": "idle", "values": {"listi()": "[1, 2, 3]"}}}
+   ]
+  },
+  {
+   "id": "V09",
+   "fixture": "V09_class_body_with.py",
+   "structure": "class with a nested def and for-loop, blank lines inside the class, statements, then a with-block, then statements",
+   "provenance": "~/code/fran/fran/preprocessing/helpers.py:564-588",
+   "decision": "class/def nesting and a with-block survive the shift; the blank line inside the class does not end it",
+   "contract": "1, 2, 5",
+   "purpose": "a class body with a nested method and loop, and a later with-block, all run as written",
+   "seed": "V09.py",
+   "steps": [
+    {"cursor": [6, 0], "keys": "<M-x>", "source": [4, 28], "cursor_after": 29, "expect": {"state": "idle", "names": ["tensors", "obj"], "values": {"TensorContainer({'a': 1}).a": "1", "tensor_dict['x'] is x": "True"}}}
+   ]
+  },
+  {
+   "id": "V10",
+   "fixture": "V10_paren_conditional_with.py",
+   "structure": "a parenthesised conditional expression whose `if`/`else` lines sit inside the parens, then a with-block holding a for-loop, then an `# end` comment",
+   "provenance": "~/code/fran/fran/inference/ensemble.py:991-1028",
+   "decision": "an `else` inside brackets is part of an expression, not a clause; the closing `)` reaches column 0",
+   "contract": "1, 2, 5",
+   "purpose": "a multi-line conditional expression in parentheses and a with/for block run as written",
+   "seed": "V10.py",
+   "steps": [
+    {"cursor": [6, 0], "keys": "<M-x>", "source": [4, 41], "cursor_after": 42, "expect": {"state": "idle", "values": {"_base_runs_result": "{'run1': [10, 20]}", "type(member).__name__": "'WholeImageInferer'"}}}
+   ]
+  },
+  {
+   "id": "V11",
+   "fixture": "V11_while_at_end.py",
+   "structure": "a cell that ends inside a while-loop body (leading blank line)",
+   "provenance": "~/code/fran/fran/twop5d/training.py:220-225",
+   "decision": "a cell ending inside an indented block needs the execution newline; no manual Enter",
+   "contract": "1, 2",
+   "purpose": "a cell ending inside a while body executes without a manual Enter",
+   "seed": "V11.py",
+   "steps": [
+    {"cursor": [5, 0], "keys": "<M-x>", "source": [4, 9], "cursor_after": 10, "expect": {"state": "idle", "values": {"dlv.taken": "3"}}}
+   ]
+  },
+  {
+   "id": "V12",
+   "fixture": "V12_deeper_first_line.py",
+   "structure": "a for-loop cell, then a cell whose first line is indented deeper than the lines below it (the file continues the loop body across the `# %%`)",
+   "provenance": "~/code/label_analysis/label_analysis/geometry_pt.py:98-109",
+   "decision": "the second cell's deeper first line continues the loop from the cell above: the loop cell is held, the second cell continues it with the loop cell's shift, and the dedented rest runs after the loop (as the file reads)",
+   "contract": "1, 2, 4, 5; rulings 2026-10-02",
+   "purpose": "a cell whose first line is deeper than the rest joins the loop held open from the cell above and runs as the file reads",
+   "seed": "V12.py",
+   "steps": [
+    {"cursor": [4, 0], "keys": "<M-x>", "source": [4, 5], "cursor_after": 7, "expect": {"state": "waiting", "absent": ["cc"]}},
+    {"keys": "<M-x>", "source": [7, 15], "expect": {"state": "idle", "values": {"self.key": "{1: 2, 2: 2}", "len(self.unique_lms)": "1", "cc": "2"}}}
+   ]
+  },
+  {
+   "id": "V13",
+   "fixture": "V13_indented_cell_markers.py",
+   "structure": "a guard body split into sub-cells by INDENTED `    # %%` markers; cursor in the middle sub-cell",
+   "provenance": "~/code/fran/build/lib/fran/extra/rough.py:627-645 (closing `# %%` added)",
+   "decision": "an indented `# %%` is a cell boundary (ruling 2026-10-02): <M-x> sends only the sub-cell around the cursor",
+   "contract": "1, 7; ruling 2026-10-02",
+   "purpose": "<M-x> inside an indented `# %%` sub-cell sends only that sub-cell",
+   "seed": "V13.py",
+   "steps": [
+    {"cursor": [13, 0], "keys": "<M-x>", "source": [11, 17], "expect": {"state": "idle", "values": {"bad": "[]"}, "absent": ["fldr", "fn"]}, "cursor_after": 19}
+   ]
+  },
+  {
+   "id": "V14",
+   "fixture": "V14_comment_only.py",
+   "structure": "a cell holding only commented-out (indented) code",
+   "provenance": "~/code/fran/fran/inference/base.py:741-746",
+   "decision": "nothing to execute: IPython must neither error nor be left waiting",
+   "contract": "1, 2, 3",
+   "purpose": "a comment-only cell leaves IPython idle with no error",
+   "steps": [
+    {"cursor": [5, 0], "keys": "<M-x>", "source": [4, 9], "cursor_after": 10, "expect": {"state": "idle"}}
+   ]
+  },
+  {
+   "id": "V15",
+   "fixture": "V15_hanging_if_sibling.py",
+   "structure": "a cell (opened by an indented `        # %%`) ending in a non-guard `if ...:` header with no body; the next cell is at the header's own indentation (a sibling, not its body), so the source itself is invalid there",
+   "provenance": "~/code/fran/build/lib/fran/extra/rough.py:803-815 (closing `# %%` added)",
+   "decision": "the next cell does not start deeper, so nothing is held by the editor; IPython itself waits on the bodiless header, and the sibling cell sent next is IPython's IndentationError to report",
+   "contract": "1, 3, 4; rulings 2026-10-02",
+   "purpose": "a bodiless `if` header leaves IPython waiting, and a following sibling cell is not silently made its body",
+   "seed": "V15.py",
+   "steps": [
+    {"cursor": [5, 0], "keys": "<M-x>", "source": [5, 8], "cursor_after": 10, "expect": {"state": "waiting", "absent": ["labels"]}},
+    {"keys": "<M-x>", "source": [10, 16], "expect": {"state": "idle", "errors": ["IndentationError"], "absent": ["labels", "x"]}}
+   ]
+  },
+  {
+   "id": "V16",
+   "fixture": "V01_step_pipeline.py",
+   "structure": "<M-X> on the guard's SETUP `# SECTION:` block: indented body, blank lines, and the block runs past a column-0 `# %%` delimiter up to the next SECTION marker",
+   "provenance": "~/code/regex1/report_parser/repl/step_pipeline.py:61-99",
+   "decision": "a SECTION payload spans a cell delimiter; send_current_section appends a protocol CR; a body-only block is shifted and runs",
+   "contract": "2, 3, 5",
+   "purpose": "<M-X> sends the whole SECTION block, delimiter line included, and it runs",
+   "seed": "V16.py",
+   "steps": [
+    {"cursor": [62, 0], "keys": "<M-X>", "source": [61, 99], "cursor_after": 101, "expect": {"state": "idle", "names": ["NO_EFFECT", "ReportClassifier", "cfg", "clf", "subset"], "values": {"LLM_GATE": "True"}}}
+   ]
+  },
+  {
+   "id": "V17",
+   "fixture": "V17_indented_section.py",
+   "structure": "<M-X> on an INDENTED `    # SECTION:` block: blank lines, comments, an f-string, ending in an indented `    # %%` just above the next indented SECTION marker",
+   "provenance": "~/code/fran/fran/trainers/incremental.py:529-559",
+   "decision": "indented SECTION markers bound the block; a block ending in a comment still executes",
+   "contract": "2, 5",
+   "purpose": "<M-X> on an indented SECTION block sends exactly that block and it runs",
+   "seed": "V17.py",
+   "steps": [
+    {"cursor": [8, 0], "keys": "<M-X>", "source": [6, 36], "cursor_after": 38, "expect": {"state": "idle", "values": {"train_init_indices": "150", "debug": "False", "run_name": "None", "lr": "0.01", "conf['dataset_params']['fold']": "0", "description": "'first run on partial ds'"}}}
+   ]
+  },
+  {
+   "id": "V18",
+   "fixture": "V04_nested_def_if_else.py",
+   "structure": "visual-line selection (<M-e>) of a for/if/else sub-block from inside the def body",
+   "provenance": "~/code/fran/fran/inference/cascade.py:699-703",
+   "decision": "a selection is shifted by its own first line, not by the cell's; it ends inside an else-block and must execute",
+   "contract": "2, 5",
+   "purpose": "a visual selection of a nested for/if/else runs with its own indentation",
+   "seed": "V18.py",
+   "steps": [
+    {"cursor": [19, 0], "keys": "V4j<M-e>", "source": [19, 23], "expect": {"state": "idle", "values": {"to_do": "[True, False]"}}}
+   ]
+  },
+  {
+   "id": "V19",
+   "fixture": "V19_single_indented_line.py",
+   "structure": "a cell that is one indented line",
+   "provenance": "~/code/fran/fran/inference/cascade.py:820",
+   "decision": "a single indented line is sent (shifted or not) and runs",
+   "contract": "1, 2, 5",
+   "purpose": "a one-line indented cell runs",
+   "seed": "V19.py",
+   "steps": [
+    {"cursor": [4, 0], "keys": "<M-x>", "source": [4, 4], "cursor_after": 5, "expect": {"state": "idle", "values": {"En.debug": "True"}}}
+   ]
+  },
+  {
+   "id": "V20",
+   "fixture": "V20_string_col0_blank.py",
+   "structure": "body-only cell holding a triple-quoted string whose text sits at column 0 and contains a blank line",
+   "provenance": "~/code/regex1/p2/base.py:173-187",
+   "decision": "the shift must not touch string lines at column 0, and the blank line inside the string must be kept",
+   "contract": "3, 5; ruling 2026-10-02",
+   "purpose": "a triple-quoted string reaches IPython with its exact text, blank line included",
+   "steps": [
+    {"cursor": [7, 0], "keys": "<M-x>", "source": [4, 18], "cursor_after": 19, "expect": {"state": "idle", "values": {"len(token_guide.splitlines())": "11", "token_guide.splitlines()[8]": "''", "token_guide.count(chr(10))": "11"}}}
+   ]
+  },
+  {
+   "id": "V21",
+   "fixture": "V21_cascade_guard_cells.py",
+   "structure": "column-0 imports and definitions followed by a guard with a body split across cells; two successive presses from line 1",
+   "provenance": "/home/ub/code/det3d/det3d/inference/cascade.py (byte copy; SHA256 db4abce78fe2eaeb39bac321164b9c44e477071426505c0279a8f95e775a13a5)",
+   "decision": "hold the whole top cell without executing any imports; continue the guard unshifted, then execute; missing real dependencies remain the hermetic IPython error",
+   "contract": "1, 2, 3, 4, 5",
+   "purpose": "reds when the top cell executes before its indented next cell on two successive <M-x> presses",
+   "steps": [
+    {"cursor": [1, 0], "keys": "<M-x>", "source": [1, 276], "cursor_after": 278, "verbatim": true, "expect": {"state": "waiting", "absent": ["deepcopy", "Compose", "run_w", "run_p"]}},
+    {"keys": "<M-x>", "source": [278, 289], "cursor_after": 291, "verbatim": true, "expect": {"state": "idle", "errors": ["ModuleNotFoundError"]}}
+   ]
+  },
+  {
+   "id": "V22",
+   "fixture": "V21_cascade_guard_cells.py",
+   "structure": "column-0 imports and definitions followed by a guard with a body split across cells; explicit cursor jump to line 279",
+   "provenance": "/home/ub/code/det3d/det3d/inference/cascade.py (byte copy; SHA256 db4abce78fe2eaeb39bac321164b9c44e477071426505c0279a8f95e775a13a5)",
+   "decision": "hold the whole top cell without executing any imports; continue the guard unshifted, then execute; missing real dependencies remain the hermetic IPython error",
+   "contract": "1, 2, 3, 4, 5",
+   "purpose": "reds when the top cell executes before its indented next cell after an explicit jump to line 279",
+   "steps": [
+    {"cursor": [1, 0], "keys": "<M-x>", "source": [1, 276], "cursor_after": 278, "verbatim": true, "expect": {"state": "waiting", "absent": ["deepcopy", "Compose", "run_w", "run_p"]}},
+    {"keys": "<M-x>", "source": [278, 289], "cursor_after": 291, "verbatim": true, "expect": {"state": "idle", "errors": ["ModuleNotFoundError"]}, "cursor": [279, 0]}
+   ]
+  }
+ ]
+}

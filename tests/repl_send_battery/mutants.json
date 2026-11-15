@@ -1,0 +1,109 @@
+{
+ "about": "Witness mutants for repl_send_battery.sh --prove-red. Each plants ONE named defect in a throwaway copy of the nvim tree (`find` must occur exactly once in `file`); every `reds` case must go FAIL and every `control` case must stay PASS. Anchors track the slime (bracketed-paste) path: re-anchor them when that code moves.",
+ "mutants": [
+  {
+   "id": "M1",
+   "what": "multi-line body-only blocks are no longer shifted left (outer_dedent skipped)",
+   "file": "lua/repl/python/slime_format.lua",
+   "find": "  elseif #lines > 1 then\n    out, shift = outer_dedent(lines)",
+   "replace": "  elseif #lines > 1 then\n    out, shift = lines, \"\"",
+   "reds": [
+    "V03",
+    "V05",
+    "V10"
+   ],
+   "control": [
+    "V19",
+    "V14"
+   ]
+  },
+  {
+   "id": "M2",
+   "what": "a complete block no longer ends with the execution CR",
+   "file": "lua/repl/python/slime_format.lua",
+   "find": "  payload[#payload + 1] = continued and \"\" or cr",
+   "replace": "  payload[#payload + 1] = \"\"",
+   "reds": [
+    "V02",
+    "V18"
+   ],
+   "control": [
+    "V08"
+   ]
+  },
+  {
+   "id": "M3",
+   "what": "blank lines are dropped again (the regression ruling 2026-10-02 forbids)",
+   "file": "lua/repl/python/slime_format.lua",
+   "find": "  local shift = target and held[target]",
+   "replace": "  lines = remove_empty_lines(lines)\n  local shift = target and held[target]",
+   "reds": [
+    "V01",
+    "V05",
+    "V20"
+   ],
+   "control": [
+    "V19",
+    "V14"
+   ]
+  },
+  {
+   "id": "M4",
+   "what": "a cell is never seen as continued by a deeper next cell (nothing is held)",
+   "file": "lua/repl/cell.lua",
+   "find": "  return deeper ~= nil and deeper > base",
+   "replace": "  return false",
+   "reds": [
+    "V01",
+    "V02",
+    "V12"
+   ],
+   "control": [
+    "V15"
+   ]
+  },
+  {
+   "id": "M5",
+   "what": "the block that continues a held cell is shifted by its own first line, not by the held cell's shift",
+   "file": "lua/repl/python/slime_format.lua",
+   "find": "  if shift then\n    out = strip_prefix(lines, shift)",
+   "replace": "  if false then\n    out = strip_prefix(lines, shift)",
+   "reds": [
+    "V01",
+    "V12"
+   ],
+   "control": [
+    "V15"
+   ]
+  },
+  {
+   "id": "M6",
+   "what": "an indented `# %%` is no longer a cell boundary (column-0 markers only)",
+   "file": "lua/repl/slime.lua",
+   "find": "    vim.g.slime_cell_delimiter = [[^\\s*#\\s*%%]]",
+   "replace": "    vim.g.slime_cell_delimiter = [[^# %%\\|^#%%]]",
+   "reds": [
+    "V13",
+    "V02"
+   ],
+   "control": [
+    "V16",
+    "V17"
+   ]
+  },
+  {
+   "id": "M7",
+   "what": "held paste goes through vim-slime newline promotion and executes before its continuation",
+   "file": "lua/repl/slime.lua",
+   "find": "      if vim.bo.filetype ~= \"python\" or not cell_continues_next",
+   "replace": "      if true or vim.bo.filetype ~= \"python\" or not cell_continues_next",
+   "reds": [
+    "V21",
+    "V22"
+   ],
+   "control": [
+    "V14"
+   ]
+  }
+ ]
+}
