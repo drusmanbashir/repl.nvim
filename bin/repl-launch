@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+kitty="${NVIM_SLIME_KITTY_BIN:-${KITTY_BIN:-kitty}}"
+socket="${DL_REPL_SOCKET:-${DL_REPL_SOCKET_RESOLVED:-}}"
+if [ -z "$socket" ]; then
+  socket="$("$root/bin/dl_repl_paths.py" --get socket:python)"
+fi
+title="${DL_REPL_WINDOW_TITLE:-$("$root/bin/slime-repl-restart" print-window-title 1)}"
+class="${DL_REPL_WINDOW_CLASS:-ipython-repl}"
+family="${DL_REPL_FAMILY:-python}"
+command="${DL_REPL_COMMAND:-}"
+python_command="${NVIM_REPL_COMMAND:-}"
+if [ "$family" = "python" ]; then
+  start_command="$(printf '%q' "$root/bin/slime-repl-restart") start-ipython"
+elif [ -n "$command" ]; then
+  start_command="$command"
+else
+  printf 'repl-launch: DL_REPL_COMMAND is required for family %s\n' "$family" >&2
+  exit 1
+fi
+no_focus="${DL_REPL_NO_FOCUS:-0}"
+
+if [ -z "$socket" ] || ! command -v "$kitty" >/dev/null 2>&1; then
+  printf 'repl-launch: kitty socket and executable are required\n' >&2
+  exit 1
+fi
+
+export DL_REPL_SOCKET="$socket"
+export DL_REPL_WINDOW_TITLE="$title"
+export DL_REPL_WINDOW_CLASS="$class"
+export DL_REPL_FAMILY="$family"
+export DL_REPL_NO_FOCUS="$no_focus"
+export DL_ROLE=repl
+export KITTY_SHELL_INTEGRATION=no-title
+if [ "$family" = "python" ]; then
+  if [ -n "$python_command" ]; then export NVIM_REPL_COMMAND="$python_command"; else unset NVIM_REPL_COMMAND; fi
+  unset DL_REPL_COMMAND
+else
+  export DL_REPL_COMMAND="$command"
+  unset NVIM_REPL_COMMAND
+fi
+
+args=(--env "DL_REPL_SOCKET=$socket" --env "DL_ROLE=repl" --env "DL_REPL_FAMILY=$family" \
+  --env "DL_REPL_WINDOW_TITLE=$title" --env "DL_REPL_WINDOW_CLASS=$class" --env "DL_REPL_NO_FOCUS=$no_focus" \
+  --env KITTY_SHELL_INTEGRATION=no-title --cwd "$PWD")
+if [ "$family" = "python" ]; then
+  if [ -n "$python_command" ]; then
+    args+=(--env "NVIM_REPL_COMMAND=$python_command")
+  else
+    args+=(--env NVIM_REPL_COMMAND)
+  fi
+  args+=(--env DL_REPL_COMMAND)
+else
+  args+=(--env "DL_REPL_COMMAND=$command" --env NVIM_REPL_COMMAND)
+fi
+for name in NVIM_REPL_ENVS_CONFIG PYTHONPATH NVIM_SLIME_KITTY_BIN; do
+  if [ -n "${!name:-}" ]; then
+    args+=(--env "$name=${!name}")
+  else
+    args+=(--env "$name")
+  fi
+done
+if [ -n "${NVIM_SLIME_IPYTHON_EXECUTABLE:-}" ]; then
+  args+=(--env "NVIM_SLIME_IPYTHON_EXECUTABLE=$NVIM_SLIME_IPYTHON_EXECUTABLE")
+else
+  args+=(--env NVIM_SLIME_IPYTHON_EXECUTABLE)
+fi
+if [ "$no_focus" = "1" ]; then
+  args+=(--dont-take-focus)
+fi
+
+frontmost_pid=""
+focused_window=""
+if [ "$no_focus" = "1" ]; then
+  if [ "$(uname -s)" = "Darwin" ]; then
+    frontmost_pid="$(osascript -e 'tell application "System Events" to get unix id of first application process whose frontmost is true' 2>/dev/null || true)"
+  elif command -v xdotool >/dev/null 2>&1; then
+    focused_window="$(xdotool getwindowfocus 2>/dev/null || true)"
+  fi
+fi
+
+restore_focus() {
+  [ "$no_focus" = "1" ] || return 0
+  if [ "$(uname -s)" = "Darwin" ]; then
+    [ -n "$frontmost_pid" ] || return 0
+    local i now
+    for i in 1 2 3 4 5 6 7 8; do
+      now="$(osascript -e 'tell application "System Events" to get unix id of first application process whose frontmost is true' 2>/dev/null || true)"
+      [ -n "$now" ] && [ "$now" != "$frontmost_pid" ] && break
+      sleep 0.2
+    done
+    for i in 1 2 3 4; do
+      now="$(osascript -e 'tell application "System Events" to get unix id of first application process whose frontmost is true' 2>/dev/null || true)"
+      [ "$now" = "$frontmost_pid" ] && return 0
+      osascript -e "tell application \"System Events\" to set frontmost of (first application process whose unix id is $frontmost_pid) to true" >/dev/null 2>&1 || true
+      sleep 0.3
+    done
+    return 0
+  fi
+  [ -n "$focused_window" ] || return 0
+  local i now
+  for i in 1 2 3 4 5 6 7 8; do
+    now="$(xdotool getwindowfocus 2>/dev/null || true)"
+    [ -n "$now" ] && [ "$now" != "$focused_window" ] && break
+    sleep 0.2
+  done
+  for i in 1 2 3 4; do
+    now="$(xdotool getwindowfocus 2>/dev/null || true)"
+    [ "$now" = "$focused_window" ] && return 0
+    xdotool windowfocus "$focused_window" >/dev/null 2>&1 || true
+    sleep 0.3
+  done
+}
+
+if "$kitty" @ --to "$socket" ls >/dev/null 2>&1; then
+  if "$kitty" @ --to "$socket" ls --match "title:^${title}$" >/dev/null 2>&1; then
+    if [ "$no_focus" != "1" ]; then
+      "$kitty" @ --to "$socket" focus-window --match "title:^${title}$"
+    fi
+    exit 0
+  fi
+  "$kitty" @ --to "$socket" launch --type=os-window \
+    --os-window-class "$class" --os-window-title "$title" --title "$title" \
+    "${args[@]}" "${BASH:-bash}" -lc "export KITTY_SHELL_INTEGRATION=no-title; exec $start_command"
+  restore_focus
+  exit 0
+fi
+
+cold_args=(--listen-on "$socket" -o allow_remote_control=socket-only -T "$title" --detach)
+if [ "$(uname -s)" != "Darwin" ]; then
+  cold_args+=(--class "$class")
+fi
+"$kitty" "${cold_args[@]}" "${BASH:-bash}" -lc "export KITTY_SHELL_INTEGRATION=no-title; exec $start_command"
+restore_focus

@@ -1,0 +1,564 @@
+#!/usr/bin/env python3
+import argparse
+import json
+import os
+import shlex
+import signal
+import subprocess
+import sys
+import shutil
+import time
+import uuid
+from collections import deque
+from pathlib import Path
+
+
+def is_darwin():
+    override = os.environ.get("DL_REPL_PATHS_SYSNAME")
+    if override:
+        return override == "Darwin"
+    return sys.platform == "darwin"
+
+
+DEFAULT_ENV = "dl"
+DEFAULT_IPYTHON = "ipython"
+REPL_ENVS_CONFIG = Path(os.environ.get("NVIM_REPL_ENVS_CONFIG", Path.home() / ".local/share/nvim/repl/python-envs.json"))
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_MARKERS = ("pyproject.toml", "setup.py", "setup.cfg", ".git")
+SHELL_NAMES = {"bash", "zsh", "sh"}
+
+
+def conda_base():
+    exe = os.environ.get("CONDA_EXE")
+    if exe:
+        base = os.path.dirname(os.path.dirname(exe))
+        if os.path.isdir(base):
+            return base
+    for candidate in (
+        Path.home() / "mambaforge",
+        Path.home() / "miniconda3",
+        Path.home() / "miniforge3",
+    ):
+        if candidate.is_dir():
+            return str(candidate)
+    return None
+
+
+def load_repl_env_config():
+    if not REPL_ENVS_CONFIG.is_file():
+        return {"default_env": DEFAULT_ENV, "projects": []}
+    try:
+        cfg = json.loads(REPL_ENVS_CONFIG.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {"default_env": DEFAULT_ENV, "projects": []}
+    if not isinstance(cfg, dict):
+        return {"default_env": DEFAULT_ENV, "projects": []}
+    return cfg
+
+
+def project_root(path):
+    path = Path(path).resolve()
+    cur = path
+    while True:
+        for marker in PROJECT_MARKERS:
+            if (cur / marker).exists():
+                return str(cur)
+        if cur.parent == cur:
+            return str(path) if path.is_dir() else None
+        cur = cur.parent
+
+
+def match_project(root):
+    cfg = load_repl_env_config()
+    best = None
+    root = str(Path(root).resolve())
+    for entry in cfg.get("projects", []):
+        prefix = entry.get("match")
+        if not prefix:
+            continue
+        prefix = str(Path(prefix).resolve())
+        if root == prefix or root.startswith(prefix + os.sep):
+            if not best or len(prefix) > len(best["match"]):
+                best = entry
+    return best
+
+
+def configured_env_name(root):
+    entry = match_project(root)
+    if entry and entry.get("conda_env"):
+        return entry["conda_env"]
+    cfg = load_repl_env_config()
+    default_env = cfg.get("default_env") or DEFAULT_ENV
+    if isinstance(default_env, str) and default_env:
+        return default_env
+    return DEFAULT_ENV
+
+
+def resolve_env_name():
+    cwd = os.getcwd()
+    root = project_root(cwd) or cwd
+    return configured_env_name(root)
+
+
+def resolve_title_base():
+    return resolve_env_name() + "-repl"
+
+
+def resolve_window_title(number):
+    return f"{resolve_title_base()}-{int(number)}"
+
+
+def env_ipython(env_name):
+    base = conda_base()
+    if not base:
+        return shutil.which("ipython") or shutil.which("python") or DEFAULT_IPYTHON
+    ipython = Path(base) / "envs" / env_name / "bin" / "ipython"
+    if ipython.is_file():
+        return str(ipython)
+    python = Path(base) / "envs" / env_name / "bin" / "python"
+    if python.is_file():
+        return str(python)
+    return shutil.which("ipython") or shutil.which("python") or DEFAULT_IPYTHON
+
+
+def resolve_ipython_executable():
+    # Nvim launch/restart must pin this from the buffer's project resolve.
+    # Cwd-only resolve is a last resort and historically mismatched titles
+    # (dl-repl window + agent ipython when nvim cwd was ~/code/agent).
+    override = os.environ.get("NVIM_SLIME_IPYTHON_EXECUTABLE")
+    if override:
+        return override
+    return env_ipython(resolve_env_name())
+
+
+def _default_kitty():
+    local = str(Path.home() / ".local/bin/kitty")
+    return local if os.path.exists(local) else "kitty"
+
+
+KITTY = os.environ.get("NVIM_SLIME_KITTY_BIN") or _default_kitty()
+# Derived from this file so the helper works from any plugin install path.
+START_CMD = f"{Path(__file__).resolve()} start-ipython"
+
+
+def configured_repl_command():
+    return os.environ.get("NVIM_REPL_COMMAND") or os.environ.get("DL_REPL_COMMAND") or os.environ.get("NVIM_SLIME_IPYTHON_START_COMMAND")
+
+
+def shell_start_command():
+    assignments = []
+    interpreter = os.environ.get("NVIM_SLIME_IPYTHON_EXECUTABLE")
+    if interpreter:
+        assignments.append("NVIM_SLIME_IPYTHON_EXECUTABLE=" + shlex.quote(interpreter))
+    command = configured_repl_command()
+    if command:
+        assignments.append("NVIM_REPL_COMMAND=" + shlex.quote(command))
+    prefix = " ".join(assignments)
+    return (prefix + " " if prefix else "") + START_CMD
+
+
+def run(cmd, input_text=None, check=False):
+    return subprocess.run(
+        cmd,
+        input=input_text,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=check,
+    )
+
+
+def read_bytes(path):
+    try:
+        with open(path, "rb") as f:
+            return f.read()
+    except OSError:
+        return b""
+
+
+def read_text(path):
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            return f.read()
+    except OSError:
+        return ""
+
+
+def stat_fields(pid):
+    if is_darwin():
+        proc = run(["ps", "-p", str(pid), "-o", "state=", "-o", "ppid=", "-o", "pgid=", "-o", "sess="])
+        if proc.returncode != 0:
+            return None
+        fields = proc.stdout.split()
+        if len(fields) < 4:
+            return None
+        return {
+            "state": fields[0],
+            "ppid": int(fields[1]),
+            "pgid": int(fields[2]),
+            "sid": int(fields[3]),
+        }
+    text = read_text(f"/proc/{pid}/stat")
+    if not text:
+        return None
+    end = text.rfind(")")
+    if end == -1:
+        return None
+    fields = text[end + 2 :].split()
+    if len(fields) < 4:
+        return None
+    return {
+        "state": fields[0],
+        "ppid": int(fields[1]),
+        "pgid": int(fields[2]),
+        "sid": int(fields[3]),
+    }
+
+
+def cmdline(pid):
+    if is_darwin():
+        proc = run(["ps", "-p", str(pid), "-o", "command="])
+        if proc.returncode != 0:
+            return ""
+        return proc.stdout.strip()
+    raw = read_bytes(f"/proc/{pid}/cmdline")
+    if not raw:
+        return ""
+    return raw.replace(b"\0", b" ").decode("utf-8", "replace").strip()
+
+
+def environ(pid):
+    if is_darwin():
+        cmd_proc = run(["ps", "-p", str(pid), "-o", "command="])
+        if cmd_proc.returncode != 0:
+            return {}
+        cmd = cmd_proc.stdout.strip()
+        full_proc = run(["ps", "eww", "-p", str(pid), "-o", "command="])
+        if full_proc.returncode != 0:
+            return {}
+        full = full_proc.stdout.strip()
+        suffix = full[len(cmd) :].strip() if full.startswith(cmd) else ""
+        env = {}
+        for token in suffix.split():
+            if "=" not in token:
+                continue
+            key, value = token.split("=", 1)
+            env[key] = value
+        return env
+    raw = read_bytes(f"/proc/{pid}/environ")
+    env = {}
+    for item in raw.split(b"\0"):
+        if b"=" not in item:
+            continue
+        key, value = item.split(b"=", 1)
+        env[key.decode("utf-8", "replace")] = value.decode("utf-8", "replace")
+    return env
+
+
+def child_pids(pid):
+    proc = run(["pgrep", "-P", str(pid)])
+    if proc.returncode != 0:
+        return []
+    children = []
+    for line in proc.stdout.splitlines():
+        token = line.strip()
+        if token.isdigit():
+            children.append(int(token))
+    return children
+
+
+def descendants_of(root_pid):
+    seen = set()
+    queue = deque(child_pids(root_pid))
+    while queue:
+        pid = queue.popleft()
+        if pid in seen:
+            continue
+        seen.add(pid)
+        queue.extend(child_pids(pid))
+    return seen
+
+
+def repl_owned(pid):
+    env = environ(pid)
+    if env.get("DL_ROLE") == "repl":
+        return True
+    text = cmdline(pid).lower()
+    return "ipython" in text or "python" in text
+
+
+def alive(pid):
+    st = stat_fields(pid)
+    return st is not None and st["state"] != "Z"
+
+
+def kill_pids(pids, sig):
+    self_pid = os.getpid()
+    for pid in sorted(pids, reverse=True):
+        if pid <= 1 or pid == self_pid or not alive(pid):
+            continue
+        try:
+            os.kill(pid, sig)
+        except ProcessLookupError:
+            pass
+        except PermissionError as exc:
+            print(f"slime-repl-restart: cannot signal pid {pid}: {exc}", file=sys.stderr)
+
+
+def wait_dead(pids, timeout):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        remaining = {pid for pid in pids if alive(pid)}
+        if not remaining:
+            return set()
+        time.sleep(0.05)
+    return {pid for pid in pids if alive(pid)}
+
+
+def cleanup_generation(main_pid, kill_main=True):
+    main_pid = int(main_pid)
+    cleanup = descendants_of(main_pid)
+    repl_id = environ(main_pid).get("UB_REPL_ID")
+    if repl_id:
+        for pid in list(cleanup) + [main_pid]:
+            if environ(pid).get("UB_REPL_ID") == repl_id:
+                cleanup.add(pid)
+    if kill_main:
+        cleanup.add(main_pid)
+    else:
+        cleanup.discard(main_pid)
+
+    cleanup = {pid for pid in cleanup if pid > 1 and alive(pid)}
+    if not cleanup:
+        return set()
+
+    kill_pids(cleanup, signal.SIGINT)
+    remaining = wait_dead(cleanup, 1.5)
+    kill_pids(remaining, signal.SIGTERM)
+    remaining = wait_dead(remaining, 2.0)
+    kill_pids(remaining, signal.SIGKILL)
+    return wait_dead(remaining, 1.0)
+
+
+def best_python_descendant(root_pid):
+    root_pid = int(root_pid)
+    candidates = descendants_of(root_pid)
+    candidates.add(root_pid)
+
+    best = None
+    for pid in candidates:
+        text = cmdline(pid).lower()
+        if "ipython" in text:
+            return pid
+        if best is None and "python" in text:
+            best = pid
+    return best
+
+
+def main_python_pid(root_pid, extra_pids):
+    ordered = []
+    seen = set()
+    if root_pid:
+        root_pid = int(root_pid)
+        ordered.append(root_pid)
+        seen.add(root_pid)
+    for pid in extra_pids:
+        pid = int(pid)
+        if pid in seen:
+            continue
+        seen.add(pid)
+        ordered.append(pid)
+
+    for pid in ordered:
+        if "ipython" in cmdline(pid).lower():
+            return pid
+    for pid in ordered:
+        if "python" in cmdline(pid).lower():
+            return pid
+    if root_pid:
+        return best_python_descendant(root_pid)
+    return None
+
+
+def restart_python_generation(main_pid, root_pid, interrupt, send_start, try_foreground_exec=None):
+    root_pid = int(root_pid) if root_pid else None
+
+    if main_pid and repl_owned(main_pid):
+        if try_foreground_exec and root_pid and main_pid == root_pid:
+            try_foreground_exec()
+            return "foreground"
+        interrupt()
+        cleanup_generation(main_pid, kill_main=True)
+        wait_dead({main_pid}, 1.5)
+        time.sleep(0.2)
+
+    send_start()
+    return "default"
+
+
+def tmux_pane_pid(target):
+    proc = run(["tmux", "display-message", "-p", "-t", target, "#{pane_id}\t#{pane_pid}\t#{pane_current_command}\t#{pane_start_command}"])
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr.strip() or proc.stdout.strip() or f"tmux target not found: {target}")
+    parts = proc.stdout.rstrip("\n").split("\t", 3)
+    if len(parts) < 2:
+        raise RuntimeError(f"unexpected tmux pane metadata: {proc.stdout!r}")
+    return parts[0], int(parts[1])
+
+
+def tmux_send(target, keys):
+    proc = run(["tmux", "send-keys", "-t", target, *keys])
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr.strip() or proc.stdout.strip() or "tmux send-keys failed")
+
+
+def restart_tmux(target):
+    pane_id, pane_pid = tmux_pane_pid(target)
+    main_pid = main_python_pid(pane_pid, [])
+
+    restart_python_generation(
+        main_pid,
+        pane_pid,
+        lambda: tmux_send(pane_id, ["C-c"]),
+        lambda: tmux_send(pane_id, [shell_start_command(), "Enter"]),
+    )
+    run(["tmux", "clear-history", "-t", pane_id])
+    print(f"restarted Python REPL generation in tmux pane {pane_id}")
+
+
+def kitty_ls(socket):
+    proc = run([KITTY, "@", "--to", socket, "ls"])
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr.strip() or proc.stdout.strip() or f"kitty socket not available: {socket}")
+    return json.loads(proc.stdout)
+
+
+def find_kitty_window(tree, window_id):
+    want = int(window_id)
+    for os_window in tree:
+        for tab in os_window.get("tabs", []):
+            for window in tab.get("windows", []):
+                if int(window.get("id", -1)) == want:
+                    return window
+    return None
+
+
+def kitty_send(socket, window_id, text):
+    proc = run([KITTY, "@", "--to", socket, "send-text", "--match", f"id:{window_id}", "--stdin"], input_text=text)
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr.strip() or proc.stdout.strip() or "kitty send-text failed")
+
+
+def kitty_foreground_pids(window):
+    pids = []
+    for proc in window.get("foreground_processes", []):
+        if proc.get("pid"):
+            pids.append(int(proc["pid"]))
+    return pids
+
+
+def process_command(pid):
+    return os.path.basename(cmdline(pid).split(" ", 1)[0])
+
+
+def python_exec_start_statement():
+    shell = os.environ.get("SHELL") or "/bin/bash"
+    shell_command = f"export DL_ROLE=repl; {shell_start_command()}; exec \"${{SHELL:-/bin/bash}}\" -l"
+    return (
+        "import os; os.environ['DL_ROLE'] = 'repl'; "
+        f"os.execv({shell!r}, [{shell!r}, '-lc', {shell_command!r}])"
+    )
+
+
+def kitty_window_command(window):
+    if not window.get("pid"):
+        return ""
+    return process_command(int(window["pid"]))
+
+
+def restart_kitty(socket, window_id):
+    window = find_kitty_window(kitty_ls(socket), window_id)
+    if not window:
+        raise RuntimeError(f"kitty window not found: {window_id}")
+
+    window_pid = int(window["pid"]) if window.get("pid") else None
+    main_pid = main_python_pid(window_pid, kitty_foreground_pids(window))
+
+    def try_foreground_exec():
+        cleanup_generation(main_pid, kill_main=False)
+        refreshed = find_kitty_window(kitty_ls(socket), window_id) or window
+        if kitty_window_command(refreshed) in SHELL_NAMES:
+            kitty_send(socket, window_id, shell_start_command() + "\n")
+        else:
+            kitty_send(socket, window_id, python_exec_start_statement() + "\n")
+
+    mode = restart_python_generation(
+        main_pid,
+        window_pid,
+        lambda: kitty_send(socket, window_id, "\003"),
+        lambda: kitty_send(socket, window_id, shell_start_command() + "\n"),
+        try_foreground_exec=try_foreground_exec,
+    )
+    suffix = " via foreground launcher" if mode == "foreground" else ""
+    print(f"restarted Python REPL generation in kitty window {window_id}{suffix}")
+
+
+def start_ipython():
+    ipython = resolve_ipython_executable()
+    env = dict(os.environ)
+    env.pop("MPLBACKEND", None)
+    env["DL_ROLE"] = "repl"
+    env["UB_REPL_ID"] = str(uuid.uuid4())
+    env["QT_QPA_PLATFORM"] = env.get("QT_QPA_PLATFORM") or "xcb"
+    # `-i <peek server>` starts the socket that answers editor `<M-k>` peeks
+    # inside this REPL, so a peek costs no prompt line (REPL_ROUTING.md).
+    command = configured_repl_command()
+    peek_server = str(PLUGIN_ROOT / "python/repl_peek_server.py")
+    flags = ["--no-autoindent", "--TerminalInteractiveShell.term_title=False"]
+    if os.path.isfile(peek_server):
+        flags += ["-i", peek_server]
+    if command:
+        launch = command + " " + shlex.join(flags)
+        os.execvpe("/bin/sh", ["sh", "-lc", launch], env)
+    argv = [ipython, *flags]
+    os.execvpe(ipython, argv, env)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    sub = parser.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("start-ipython")
+    sub.add_parser("print-env-name")
+    sub.add_parser("print-title-base")
+    print_title = sub.add_parser("print-window-title")
+    print_title.add_argument("number", type=int)
+    tmux = sub.add_parser("tmux")
+    tmux.add_argument("target")
+    kitty = sub.add_parser("kitty")
+    kitty.add_argument("socket")
+    kitty.add_argument("window_id")
+    args = parser.parse_args()
+
+    try:
+        if args.cmd == "start-ipython":
+            raise SystemExit(start_ipython())
+        if args.cmd == "print-env-name":
+            print(resolve_env_name())
+            return
+        if args.cmd == "print-title-base":
+            print(resolve_title_base())
+            return
+        if args.cmd == "print-window-title":
+            print(resolve_window_title(args.number))
+            return
+        if args.cmd == "tmux":
+            restart_tmux(args.target)
+        elif args.cmd == "kitty":
+            restart_kitty(args.socket, args.window_id)
+    except Exception as exc:
+        print(f"slime-repl-restart: {exc}", file=sys.stderr)
+        raise SystemExit(1)
+
+
+if __name__ == "__main__":
+    main()
