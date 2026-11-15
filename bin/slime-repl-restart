@@ -142,7 +142,7 @@ START_CMD = f"{Path(__file__).resolve()} start-ipython"
 
 
 def configured_repl_command():
-    return os.environ.get("NVIM_REPL_COMMAND") or os.environ.get("NVIM_SLIME_IPYTHON_START_COMMAND")
+    return os.environ.get("NVIM_REPL_COMMAND") or os.environ.get("DL_REPL_COMMAND") or os.environ.get("NVIM_SLIME_IPYTHON_START_COMMAND")
 
 
 def shell_start_command():
@@ -513,12 +513,14 @@ def start_ipython():
     # `-i <peek server>` starts the socket that answers editor `<M-k>` peeks
     # inside this REPL, so a peek costs no prompt line (REPL_ROUTING.md).
     command = configured_repl_command()
-    if command:
-        os.execvpe("/bin/sh", ["sh", "-lc", command], env)
     peek_server = str(PLUGIN_ROOT / "python/repl_peek_server.py")
-    argv = [ipython, "--no-autoindent", "--TerminalInteractiveShell.term_title=False"]
+    flags = ["--no-autoindent", "--TerminalInteractiveShell.term_title=False"]
     if os.path.isfile(peek_server):
-        argv += ["-i", peek_server]
+        flags += ["-i", peek_server]
+    if command:
+        launch = command + " " + shlex.join(flags)
+        os.execvpe("/bin/sh", ["sh", "-lc", launch], env)
+    argv = [ipython, *flags]
     os.execvpe(ipython, argv, env)
 
 
