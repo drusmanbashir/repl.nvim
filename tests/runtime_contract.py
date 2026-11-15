@@ -44,6 +44,18 @@ class RuntimeContract(unittest.TestCase):
     def calls(self):
         return [json.loads(line) for line in self.log.read_text().splitlines()]
 
+    def test_generic_launcher_command_is_not_a_python_override(self):
+        env = self.environment(DL_REPL_COMMAND=f"{RESTART} start-ipython")
+        env.pop("NVIM_REPL_COMMAND", None)
+        env.pop("NVIM_SLIME_IPYTHON_START_COMMAND", None)
+        probe = (
+            "import importlib.machinery, json; "
+            f"m=importlib.machinery.SourceFileLoader('restart', {str(RESTART)!r}).load_module(); "
+            "print(json.dumps(m.configured_repl_command()))"
+        )
+        result = subprocess.run(["python3", "-c", probe], env=env, check=True, capture_output=True, text=True)
+        self.assertIsNone(json.loads(result.stdout))
+
     def test_restart_appends_ipython_flags_and_bundled_peek_server(self):
         capture = self.work / "ipython.json"
         fake_ipython = self.work / "ipython"

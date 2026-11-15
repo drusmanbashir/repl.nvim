@@ -142,7 +142,7 @@ START_CMD = f"{Path(__file__).resolve()} start-ipython"
 
 
 def configured_repl_command():
-    return os.environ.get("NVIM_REPL_COMMAND") or os.environ.get("DL_REPL_COMMAND") or os.environ.get("NVIM_SLIME_IPYTHON_START_COMMAND")
+    return os.environ.get("NVIM_REPL_COMMAND") or os.environ.get("NVIM_SLIME_IPYTHON_START_COMMAND")
 
 
 def shell_start_command():
