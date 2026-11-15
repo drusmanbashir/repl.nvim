@@ -587,7 +587,11 @@ function M.setup()
       local family = repl_backend.family_for_filetype(vim.bo.filetype or "")
       local spec = require("repl.specs").slime_kitty_spec(family)
       local listen_on = spec.listen_on or vim.env.KITTY_LISTEN_ON
-      return spec.family, listen_on, spec.title, spec.window_class or spec.title, spec.launcher, spec.start_command
+      local start_command = spec.start_command
+      if family == "python" then
+        start_command = "NVIM_REPL_ENVS_CONFIG=" .. vim.fn.shellescape(host_paths.get().python_envs) .. " " .. start_command
+      end
+      return spec.family, listen_on, spec.title, spec.window_class or spec.title, spec.launcher, start_command
     end
 
     local function known_kitty_listen_ons(primary)
@@ -642,7 +646,10 @@ function M.setup()
       -- Copy then mutate: must drop a stale NVIM_SLIME_IPYTHON_EXECUTABLE so the
       -- helper cannot inherit agent from a prior buffer when resolve is empty.
       local env = vim.fn.environ()
-      local spec = require("repl.specs").slime_kitty_spec(current_slime_family())
+      local family = current_slime_family()
+      local spec = require("repl.specs").slime_kitty_spec(family)
+      env.DL_REPL_FAMILY = family
+      env.NVIM_SLIME_KITTY_BIN = host_paths.kitty_bin()
       env.DL_REPL_COMMAND = spec.start_command
       local python_command = host_paths.language("python").command
       env.NVIM_REPL_COMMAND = current_slime_family() == "python" and python_command and python_command ~= "" and python_command or nil
