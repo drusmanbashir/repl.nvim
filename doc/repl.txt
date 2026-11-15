@@ -1,0 +1,71 @@
+*repl.txt*                         External Kitty REPL sessions
+
+REPL.NVIM                                                         *repl.nvim*
+
+Pair source buffers with exact Kitty REPL targets, focus them, inspect values,
+continue Python blocks across cells, restart in place, and jump from tracebacks
+back into source. vim-slime supplies code sending. DAP sidecar, R.nvim and
+Neopyter remain optional integrations.
+
+SETUP                                                              *repl-setup*
+>
+  require('repl').setup({
+    kitty_bin = 'kitty',
+    languages = {
+      python = {
+        -- Omit command to resolve the project interpreter, without a cap.
+        -- command = 'systemd-run --user --scope -p MemoryMax=100G -p MemorySwapMax=0 ipython',
+        -- command = '/absolute/path/to/env/bin/ipython',
+      },
+      r = { command = 'R --quiet --no-save' },
+      lua = { command = 'lua' },
+    },
+  })
+<
+Python command overrides name an IPython executable with an optional shell
+prefix. The helper appends its IPython flags and bundled peek server. The
+systemd-run example is Linux-only; restart retains the same configured command.
+
+Each language accepts command, launcher, listen_on, title and window_class.
+Omitting launcher uses the bundled Kitty launcher. Omitting listen_on uses the
+shared runtime socket resolver. Custom desktop placement belongs to a host
+launcher, outside this plugin.
+
+python_envs: JSON file of project/Conda pairings; default is
+stdpath('data') .. '/repl/python-envs.json'. Missing parent directories are
+created on the first saved pairing. Explicit project mappings and default_env
+win; a missing map uses CONDA_DEFAULT_ENV or the legacy dl default.
+
+backend_config: optional JSON selecting providers by filetype. Default: Slime.
+python_paths: optional JSON of project-specific import roots.
+focus_back_helper: optional compiled OS-window raise helper; false disables it.
+focus_target_helper: optional existing host focus bridge.
+focus_lab(bufnr): optional callback for explicit notebook/browser focus.
+callbacks.ensure_iron(): optional host callback loading/configuring Iron.
+
+ACTION KEYS                                                        *repl-keys*
+
+M-e     Send a line or selection.
+M-x     Send the current percent cell and advance.
+M-X     Send the current SECTION block and advance.
+M-i     Find and send the import for the symbol under the cursor.
+M-k     Inspect the expression's value without launching a session.
+M-R     Restart the bound terminal Python REPL.
+M-h     Focus the matching debug, notebook or ready terminal destination.
+
+Setup installs the existing keymaps. Override them with |vim.keymap.set()|.
+:ReplPeekStyle inline|popup|toggle changes the inspection display style.
+
+REVERSE FOCUS                                                   *repl-reverse*
+
+Run bin/kitty-focus-slime-source --window-id <active-Kitty-child-id> from the
+REPL window. It selects the exact paired editor. A terminal without a binding
+is a silent no-op; pair ownership never expires because time has passed.
+
+LIMITS                                                             *repl-limits*
+
+Desktop placement, the DAP console and JupyterLab lifecycle remain owned by
+the host and their existing plugins. Linux is the current verification host;
+macOS live focus/launch behavior is unverified in this migration.
+
+vim:tw=78:ts=8:noet:ft=help:norl:

@@ -70,3 +70,5 @@ For reverse focus from Kitty, invoke the bundled `bin/kitty-focus-slime-source -
 ## Verification
 
 The migration reuses `~/scripts/nvim/tests/repl_send_battery.sh` for the 22 source-preservation and IPython execution cases, and `~/scripts/oracle/adapters/slime/run.sh` for real Kitty/Neovim behavior on hidden displays. The capture battery is a payload check; Oracle supplies the live transport and focus evidence. Test results are reported from actual runs, not inferred from this document.
+
+Run `:help repl.nvim` for setup and keys. Linux is the current verification host; macOS live focus/launch behavior remains unverified. The hidden-display gate cannot verify physical monitor identity; host placement remains outside the plugin.
