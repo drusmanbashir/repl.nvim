@@ -2,7 +2,7 @@ local M = {}
 
 local CONFIG_PATH = vim.fn.stdpath("data") .. "/repl/python-envs.json"
 local cache = {}
-local FALLBACK_ENV = "dl"
+local FALLBACK_ENV = vim.env.CONDA_DEFAULT_ENV or "dl"
 local pending_prompt = {}
 local declined_prompt = {}
 
@@ -101,7 +101,9 @@ local function write_config(cfg)
   end
   lines[#lines + 1] = "  ]"
   lines[#lines + 1] = "}"
-  vim.fn.writefile(lines, config_path())
+  local path = config_path()
+  vim.fn.mkdir(vim.fn.fnamemodify(path, ":h"), "p")
+  vim.fn.writefile(lines, path)
 end
 
 -- nvim/configs/repl-python-envs.json is written with Sinclair's absolute paths. Rather
