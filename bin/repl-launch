@@ -9,8 +9,17 @@ if [ -z "$socket" ]; then
 fi
 title="${DL_REPL_WINDOW_TITLE:-$("$root/bin/slime-repl-restart" print-window-title 1)}"
 class="${DL_REPL_WINDOW_CLASS:-ipython-repl}"
-command="${NVIM_REPL_COMMAND:-${DL_REPL_COMMAND:-}}"
-start_command="$(printf '%q' "$root/bin/slime-repl-restart") start-ipython"
+family="${DL_REPL_FAMILY:-python}"
+command="${DL_REPL_COMMAND:-}"
+python_command="${NVIM_REPL_COMMAND:-}"
+if [ "$family" = "python" ]; then
+  start_command="$(printf '%q' "$root/bin/slime-repl-restart") start-ipython"
+elif [ -n "$command" ]; then
+  start_command="$command"
+else
+  printf 'repl-launch: DL_REPL_COMMAND is required for family %s\n' "$family" >&2
+  exit 1
+fi
 no_focus="${DL_REPL_NO_FOCUS:-0}"
 
 if [ -z "$socket" ] || ! command -v "$kitty" >/dev/null 2>&1; then
@@ -20,16 +29,39 @@ fi
 
 export DL_REPL_SOCKET="$socket"
 export DL_REPL_WINDOW_TITLE="$title"
+export DL_REPL_WINDOW_CLASS="$class"
+export DL_REPL_FAMILY="$family"
+export DL_REPL_NO_FOCUS="$no_focus"
 export DL_ROLE=repl
 export KITTY_SHELL_INTEGRATION=no-title
-
-args=(--env "DL_REPL_SOCKET=$socket" --env "DL_ROLE=repl" --env "DL_REPL_FAMILY=${DL_REPL_FAMILY:-python}" \
-  --env "DL_REPL_WINDOW_TITLE=$title" --env "DL_REPL_WINDOW_CLASS=$class" --env "DL_REPL_NO_FOCUS=$no_focus" --cwd "$PWD")
-if [ -n "$command" ]; then
-  args+=(--env "NVIM_REPL_COMMAND=$command")
+if [ "$family" = "python" ]; then
+  if [ -n "$python_command" ]; then export NVIM_REPL_COMMAND="$python_command"; else unset NVIM_REPL_COMMAND; fi
+  unset DL_REPL_COMMAND
 else
-  args+=(--env NVIM_REPL_COMMAND)
+  export DL_REPL_COMMAND="$command"
+  unset NVIM_REPL_COMMAND
 fi
+
+args=(--env "DL_REPL_SOCKET=$socket" --env "DL_ROLE=repl" --env "DL_REPL_FAMILY=$family" \
+  --env "DL_REPL_WINDOW_TITLE=$title" --env "DL_REPL_WINDOW_CLASS=$class" --env "DL_REPL_NO_FOCUS=$no_focus" \
+  --env KITTY_SHELL_INTEGRATION=no-title --cwd "$PWD")
+if [ "$family" = "python" ]; then
+  if [ -n "$python_command" ]; then
+    args+=(--env "NVIM_REPL_COMMAND=$python_command")
+  else
+    args+=(--env NVIM_REPL_COMMAND)
+  fi
+  args+=(--env DL_REPL_COMMAND)
+else
+  args+=(--env "DL_REPL_COMMAND=$command" --env NVIM_REPL_COMMAND)
+fi
+for name in NVIM_REPL_ENVS_CONFIG PYTHONPATH NVIM_SLIME_KITTY_BIN; do
+  if [ -n "${!name:-}" ]; then
+    args+=(--env "$name=${!name}")
+  else
+    args+=(--env "$name")
+  fi
+done
 if [ -n "${NVIM_SLIME_IPYTHON_EXECUTABLE:-}" ]; then
   args+=(--env "NVIM_SLIME_IPYTHON_EXECUTABLE=$NVIM_SLIME_IPYTHON_EXECUTABLE")
 else
