@@ -56,6 +56,38 @@ class RuntimeContract(unittest.TestCase):
         result = subprocess.run(["python3", "-c", probe], env=env, check=True, capture_output=True, text=True)
         self.assertIsNone(json.loads(result.stdout))
 
+    def test_custom_command_uses_pinned_interpreter_before_parent_path(self):
+        home = self.work / "home"
+        pinned = self.work / "project-bin"
+        parent = self.work / "parent-bin"
+        home.mkdir()
+        pinned.mkdir()
+        parent.mkdir()
+        (home / ".profile").write_text(f"export PATH={parent}:/usr/bin:/bin\n")
+        for directory, source in ((pinned, "pinned"), (parent, "parent")):
+            executable = directory / "ipython"
+            executable.write_text(
+                "#!/usr/bin/env python3\n"
+                "import json, os, sys\n"
+                f"source = {source!r}\n"
+                "open(os.environ['IPYTHON_CAPTURE'], 'w').write(json.dumps({'source': source, 'argv': sys.argv[1:], 'path': os.environ['PATH'], 'pinned': os.environ['NVIM_SLIME_IPYTHON_EXECUTABLE']}))\n"
+            )
+            executable.chmod(0o755)
+        capture = self.work / "selected-ipython.json"
+        env = self.environment(
+            HOME=str(home),
+            PATH=f"{parent}:/usr/bin:/bin",
+            NVIM_SLIME_IPYTHON_EXECUTABLE=str(pinned / "ipython"),
+            NVIM_REPL_COMMAND="ipython",
+            IPYTHON_CAPTURE=str(capture),
+        )
+        subprocess.run([str(RESTART), "start-ipython"], env=env, check=True, timeout=5)
+        result = json.loads(capture.read_text())
+        self.assertEqual(result["source"], "pinned")
+        self.assertTrue(result["path"].startswith(f"{pinned}:"))
+        self.assertEqual(result["pinned"], str(pinned / "ipython"))
+        self.assertIn("--no-autoindent", result["argv"])
+
     def test_restart_appends_ipython_flags_and_bundled_peek_server(self):
         capture = self.work / "ipython.json"
         fake_ipython = self.work / "ipython"

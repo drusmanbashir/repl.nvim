@@ -518,8 +518,9 @@ def start_ipython():
     if os.path.isfile(peek_server):
         flags += ["-i", peek_server]
     if command:
+        env["PATH"] = os.path.dirname(os.path.abspath(ipython)) + os.pathsep + env.get("PATH", "")
         launch = command + " " + shlex.join(flags)
-        os.execvpe("/bin/sh", ["sh", "-lc", launch], env)
+        os.execvpe("/bin/sh", ["sh", "-c", launch], env)
     argv = [ipython, *flags]
     os.execvpe(ipython, argv, env)
 
