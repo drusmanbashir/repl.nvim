@@ -184,7 +184,7 @@ local function sweep(dir)
     end
     local path = dir .. "/" .. name
     local stat = uv.fs_stat(path)
-    if stat and stat.mtime and (now - stat.mtime.sec) > 600 then
+    if stat and stat.type == "file" and stat.mtime and (now - stat.mtime.sec) > 600 then
       os.remove(path)
     end
   end

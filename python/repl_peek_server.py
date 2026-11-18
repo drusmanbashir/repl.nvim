@@ -6,12 +6,12 @@ meant to be glanced at. This listens on a unix socket instead, so a peek costs
 the REPL nothing visible at all.
 
 Started by the REPL's own launcher (`ipython -i <this file>`; see
-nvim/lua/user/repl/specs.lua and bin/slime-repl-restart), so it runs in the user
+lua/repl/specs.lua and bin/slime-repl-restart), so it runs in the user
 namespace -- `globals()` here IS what the operator typed into.
 
 Wire: one request line (the expression) in; `ok\\n<repr>` or `err:<ExcType>`
 out; then the connection closes. Same two answers the pasted probe writes, so
-user.repl.peek parses one format either way.
+repl.peek parses one format either way.
 
 Socket name is how the editor knows WHICH REPL it is talking to: the kitty
 window id or the tmux pane the REPL is running in, both of which the editor
