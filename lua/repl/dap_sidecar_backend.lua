@@ -1,35 +1,11 @@
---- R-SEND-03, shared source-send contract: the "dap" REPL backend.
----
---- In production the DAP session, its adapter and its
---- console all live in a SEPARATE sidecar nvim, so the editor's own
---- `dap.session()` is nil for the whole session. Every editor-side REPL send
---- therefore fell through to kitty while the debugger sat stopped at a frame.
----
---- The fix is a BACKEND, not a special case bolted into slime's send functions:
---- a live sidecar is another place a registered buffer's REPL can be, reached
---- down the same pathway kitty is reached by --
----
----   repl_actions.run -> repl_router.resolve -> registered backend -> transport
----
---- repl_router returns ("dap", "sidecar") first while `sidecar.session_live()`
---- is true and the buffer's provider permits this route; this module registers
---- the backend those sends land on (R6'). Text extraction is the SAME code slime
---- uses -- `repl.cell`, `repl.sections`, `repl.send_context` and
---- the two extractors slime exports for this purpose -- so a cell sent to the
---- debugger is byte-for-byte the cell that would have gone to kitty.
----
---- Transport is `dap-sidecar.engine.dap2`.send_repl_text (R6). Nothing here ever falls back to
---- kitty: while the sidecar is live, the silent fallback IS the reported bug (R5).
+--- The dap backend sends source text to the separate sidecar Neovim.
+--- Text extraction is shared with Slime; transport is dap2.send_repl_text.
+--- Value peeks use the cached-value popup directly in repl.peek.
 
 local M = {}
 
---- Actions that are about the KITTY repl itself -- binding a target, quitting
---- it -- rather than about sending code. They still mean kitty while the
---- debugger owns the sends, so they are handed back to the configured backend.
----
---- `send_file` and `send_until_cursor` are NOT here: they produce text, so R3
---- routes them to the sidecar like every other send. Handing them to kitty while
---- a session is live was the R1/R5 breach the round-1 review found.
+--- Binding and quitting belong to the configured terminal backend.
+--- Actions that send source text stay with the debugger.
 local PASSTHROUGH_ACTIONS = {
 	"use_repl_target",
 	"quit_repl",
@@ -163,17 +139,6 @@ local function buffer_text(last_line)
 end
 
 local ACTIONS = {
-	--- REPL_ROUTING.md § `<M-k>` peek. The probe reads through
-	--- `dict(locals())`, so sent to the console of a session stopped at a frame
-	--- it answers with that FRAME's value -- which is the value the operator is
-	--- looking at while debugging, not kitty's stale one.
-	peek_value = function(context)
-		local text = context and context.text
-		if type(text) ~= "string" or text == "" then
-			return false
-		end
-		return require("dap-sidecar.engine.dap2").send_repl_text(text, { focus = false }) == true
-	end,
 	send_selection = send_selection,
 	send_line = function()
 		if send(vim.api.nvim_get_current_line()) then
@@ -216,11 +181,7 @@ local ACTIONS = {
 	end,
 }
 
---- Register the backend. Idempotent, and cheap enough to be its own readiness
---- check: this backend needs no plugin at all, which is why
---- `repl_backend.ensure_backend_ready("dap")` can answer true without loading
---- vim-slime. `restart_repl` is deliberately absent (R3, R2'): restarts resolve
---- through `repl_router.resolve_restart`, which never returns this backend.
+--- Readiness needs no vim-slime. Restarts resolve separately and never use dap.
 function M.ensure()
 	if registered then
 		return true

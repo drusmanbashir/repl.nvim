@@ -1,7 +1,7 @@
--- Hh gate for the answer half of the `<M-v>` REPL peek
+-- Hh gate for the answer half of the `<M-k>` REPL peek
 -- (lua/repl/peek.lua): what the module does with the file the REPL
--- writes. No REPL and no send -- the test writes that file itself -- so the
--- rows are about the poll, the silence contract and what gets painted.
+-- writes. Answer rows write that file directly; the DAP row rejects console
+-- sends and checks the running notice and ordinary REPL fallback.
 --
 -- Data-level, not a GUI claim: rows read the extmark and the float's own
 -- buffer, not the screen.
@@ -133,6 +133,29 @@ do
   check("toggle_switches_style", peek.style() == "inline", peek.style())
   peek.toggle_style()
   check("toggle_switches_back", peek.style() == "popup", peek.style())
+end
+
+do
+  buffer_with({ "x" })
+  local sent, shown = 0, nil
+  package.loaded["repl.actions"] = {
+    current_context = function() return {family="python", bufnr=vim.api.nvim_get_current_buf()} end,
+    resolve_backend = function() return "dap", "sidecar" end,
+    run = function() sent=sent+1; return false end,
+  }
+  package.loaded["dap-sidecar.hover.hover"] = {show=function(expr) shown=expr; return true end}
+  peek.peek({expr="x"})
+  check("peek_dap_no_console", sent == 0 and shown == "x", "console sends=" .. sent)
+  local notices, notify = {}, vim.notify
+  vim.notify = function(message) notices[#notices+1]=message end
+  package.loaded["dap-sidecar.hover.hover"].show = function() return false end
+  peek.peek()
+  vim.notify = notify
+  check("peek_running_notice", sent == 0 and vim.deep_equal(notices,
+    {"DAP: values show once the program stops"}), vim.inspect(notices))
+  package.loaded["repl.actions"].resolve_backend = function() return "slime" end
+  peek.peek({expr="x"})
+  check("peek_without_debugger_keeps_probe", sent == 1, "console sends=" .. sent)
 end
 
 print(string.format("%d passed, %d failed", passes, #failures))

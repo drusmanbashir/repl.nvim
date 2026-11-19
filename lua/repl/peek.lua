@@ -12,8 +12,7 @@
 ---    are things a screen scrape has to guess about, and a wrong guess here
 ---    would put someone else's value next to this line.
 ---  * The probe runs `exec(<code>, globals(), dict(locals()))`: reads see the
----    frame (so a peek works stopped at a debug frame as well as at the
----    prompt), writes land in the copy, so the user namespace, `_` and the
+---    REPL namespace; writes land in the copy, so the user namespace, `_` and the
 ---    `Out` history are untouched.
 ---
 --- Style is `vim.g.ub_repl_peek_style`: "popup" (a float at the cursor, the
@@ -482,6 +481,16 @@ function M.peek(opts)
   clear()
   stop_pending()
 
+  local repl_actions = require("repl.actions")
+  local context = repl_actions.current_context()
+  if select(1, repl_actions.resolve_backend(context)) == "dap" then
+    local expr = opts.expr or (opts.visual and require("repl.send_context").visual_selection() or nil)
+    if require("dap-sidecar.hover.hover").show(expr) == false then
+      vim.notify("DAP: values show once the program stops", vim.log.levels.INFO)
+    end
+    return true
+  end
+
   local expr = opts.expr
   if expr == nil and opts.visual then
     expr = require("repl.send_context").visual_selection()
@@ -491,8 +500,6 @@ function M.peek(opts)
     return false
   end
 
-  local repl_actions = require("repl.actions")
-  local context = repl_actions.current_context()
   if not PROBES[context.family] then
     vim.notify("REPL peek is not available for " .. context.family .. " buffers", vim.log.levels.WARN)
     return false

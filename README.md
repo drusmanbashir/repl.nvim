@@ -63,7 +63,7 @@ The host configuration at `~/scripts/nvim/lua/user/repl_plugin.lua` documents th
 
 ## Keys and reverse focus
 
-The existing send/focus actions are available through `repl.backend`, `repl.actions` and `repl.focus_route`. `M-x` sends a cell; `M-X` sends a SECTION block; `M-e` sends a line or selection; `M-k` peeks; `M-R` restarts; `M-h` focuses the paired destination. The Python continuation state belongs to each target and resets on restart.
+The existing send/focus actions are available through `repl.backend`, `repl.actions` and `repl.focus_route`. `M-x` sends a cell; `M-X` sends a SECTION block; `M-e` sends a line or selection; `M-k` peeks (the sidecar value popup while debugging, with no console text); `M-R` restarts; `M-h` focuses the paired destination. The Python continuation state belongs to each target and resets on restart.
 
 For reverse focus from Kitty, invoke the bundled `bin/kitty-focus-slime-source --window-id <active Kitty child ID>`. The existing host Kitty/desktop shortcuts remain supported by their desktop entrypoints. Unbound terminals are a no-op; bindings do not expire with age.
 
