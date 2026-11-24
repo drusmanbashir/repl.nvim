@@ -488,18 +488,9 @@ function M.setup()
       return string.format("%s-%d", base_title, max_suffix + 1)
     end
 
-    -- The OS-title fixups below are X11/GNOME-specific. macOS has no
-    -- _NET_WM_NAME and ships neither tool, so calling them raised
-    -- "E475: 'xdotool' is not executable" out of vim.fn.system and aborted
-    -- <leader>it / REPL registration on Mac. Capability check, not host check:
-    -- a Linux box without xdotool degrades the same way instead of erroring.
-    local x11_title_tools_ok = nil
-    local function x11_title_tools_available()
-      if x11_title_tools_ok == nil then
-        x11_title_tools_ok = vim.fn.executable("xdotool") == 1 and vim.fn.executable("xprop") == 1
-      end
-      return x11_title_tools_ok
-    end
+    -- Kitty owns titles on other platforms. X11 decorations need a verified
+    -- UTF8_STRING property on the OS window as well.
+    local x11_titles = vim.env.DISPLAY ~= nil and vim.env.DISPLAY ~= "" and vim.fn.executable("xprop") == 1
 
     local function net_wm_name_is_utf8(xid, window_title)
       local out = vim.fn.system({ "xprop", "-id", tostring(xid), "_NET_WM_NAME" })
@@ -514,21 +505,9 @@ function M.setup()
       -- Remove → 8u set, retry until UTF8 value sticks (deterministic; no OCR).
       local xid = tostring(platform_window_id)
       for _ = 1, 8 do
-        -- xdotool --name writes STRING _NET_WM_NAME and blanks GNOME bar if it runs last.
-        vim.fn.system({ "xdotool", "set_window", "--name", window_title, xid })
         vim.fn.system({ "xprop", "-id", xid, "-f", "WM_NAME", "8s", "-set", "WM_NAME", window_title })
         vim.fn.system({ "xprop", "-id", xid, "-remove", "_NET_WM_NAME" })
-        vim.fn.system({
-          "xprop",
-          "-id",
-          xid,
-          "-f",
-          "_NET_WM_NAME",
-          "8u",
-          "-set",
-          "_NET_WM_NAME",
-          window_title,
-        })
+        vim.fn.system({ "xprop", "-id", xid, "-f", "_NET_WM_NAME", "8u", "-set", "_NET_WM_NAME", window_title })
         vim.fn.system({ "xprop", "-id", xid, "-f", "_NET_WM_ICON_NAME", "8u", "-set", "_NET_WM_ICON_NAME", window_title })
         if net_wm_name_is_utf8(xid, window_title) then
           return true
@@ -565,7 +544,7 @@ function M.setup()
       -- The send path reads window.title back to compute the next title, so a
       -- cached pre-rename tree here would re-apply the old name forever.
       kitty_cache.invalidate(listen_on)
-      if not x11_title_tools_available() then
+      if not x11_titles then
         -- kitty's own RPC titles are the whole story off X11; skipping also
         -- avoids a 1.5s platform_window_id wait on every registration.
         return
@@ -578,8 +557,8 @@ function M.setup()
       if not xid then
         return
       end
-      -- After kitty RPC (often STRING), force UTF8 OS title until it sticks.
-      vim.wait(150)
+      -- The Kitty commands have replied. Correct the server-side properties
+      -- before returning without holding the editor for a fixed settle time.
       set_os_window_title(xid, window_title)
     end
 

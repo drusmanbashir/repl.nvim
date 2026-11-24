@@ -101,10 +101,19 @@ restore_focus() {
     return 0
   fi
   [ -n "$focused_window" ] || return 0
-  local i now
+  local i now xid
+  # Kitty reports the platform id of this exact child once its OS window
+  # exists. Once mapped, check focus again before deciding to restore it.
+  local lookup="${DL_FOCUS_BACK_BIN:-}"
   for i in 1 2 3 4 5 6 7 8; do
     now="$(xdotool getwindowfocus 2>/dev/null || true)"
     [ -n "$now" ] && [ "$now" != "$focused_window" ] && break
+    if [[ "$now" == "$focused_window" && -x "$lookup" ]] &&
+       xid="$("$lookup" --platform-window-id "$socket" "${1:-}" 2>/dev/null)" &&
+       [[ "$xid" =~ ^[1-9][0-9]*$ ]] &&
+       LC_ALL=C xwininfo -id "$xid" 2>/dev/null | grep -q 'Map State: IsViewable'; then
+      break
+    fi
     sleep 0.2
   done
   for i in 1 2 3 4; do
@@ -133,7 +142,7 @@ if "$kitty" @ --to "$socket" ls >/dev/null 2>&1; then
     --os-window-class "$class" --os-window-title "$title" --title "$title" \
     "${args[@]}" "${BASH:-bash}" -lc "export KITTY_SHELL_INTEGRATION=no-title; $start_command")"
   printf '%s\n' "$wid"
-  restore_focus
+  restore_focus "$wid"
   place_new_window "$wid"
   exit 0
 fi
