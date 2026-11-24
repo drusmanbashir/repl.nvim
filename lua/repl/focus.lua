@@ -157,7 +157,7 @@ local function mark_binding_stale(bufnr, detail)
 end
 
 local function focus_kitty_child(binding, callback)
-  kitty_rpc.request_async(binding.listen_on, "focus-window", { match = "id:" .. tostring(binding.window_id) },
+  kitty_rpc.send_async(binding.listen_on, "focus-window", { match = "id:" .. tostring(binding.window_id) },
     function(_, err) callback(err) end)
 end
 

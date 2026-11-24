@@ -125,8 +125,8 @@ function M.request(listen_on, command, payload)
   return await(listen_on, frame(command, payload, false), true)
 end
 
-function M.request_async(listen_on, command, payload, callback)
-  exchange(listen_on, frame(command, payload, false), true, vim.schedule_wrap(callback))
+function M.send_async(listen_on, command, payload, callback)
+  exchange(listen_on, frame(command, payload, true), false, vim.schedule_wrap(callback))
 end
 
 function M.get_text(listen_on, window_id, extent)
