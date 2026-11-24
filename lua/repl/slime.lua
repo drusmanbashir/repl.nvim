@@ -490,7 +490,9 @@ function M.setup()
 
     -- Kitty owns titles on other platforms. X11 decorations need a verified
     -- UTF8_STRING property on the OS window as well.
-    local x11_titles = vim.env.DISPLAY ~= nil and vim.env.DISPLAY ~= "" and vim.fn.executable("xprop") == 1
+    local x11_titles = not require("repl.paths").is_darwin()
+      and vim.env.DISPLAY ~= nil and vim.env.DISPLAY ~= ""
+      and vim.fn.executable("xprop") == 1
 
     local function net_wm_name_is_utf8(xid, window_title)
       local out = vim.fn.system({ "xprop", "-id", tostring(xid), "_NET_WM_NAME" })
