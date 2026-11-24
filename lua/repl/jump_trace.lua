@@ -1,6 +1,6 @@
 local M = {}
-local host_paths = require("repl.config")
-local kitty_bin = host_paths.kitty_bin()
+local kitty_rpc = require("repl.kitty_rpc")
+local uv = vim.uv
 local active_slime_kitty_target = nil
 
 vim.api.nvim_create_autocmd("User", {
@@ -20,7 +20,7 @@ vim.api.nvim_create_autocmd("User", {
 
 -- ===== utils =====
 local function strip_ansi(s) return (s:gsub("\27%[[0-9;]*m", "")) end
-local function fs_exists(p) return p and vim.loop.fs_stat(p) ~= nil end
+local function fs_exists(p) return p and uv.fs_stat(p) ~= nil end
 local function expand_home(p) if p and p:sub(1,2) == "~/" then return vim.fn.expand("~") .. p:sub(2) end return p end
 local function get_git_root()
   local ok,out=pcall(function() return vim.fn.systemlist({ "git","rev-parse","--show-toplevel"}) end)
@@ -31,7 +31,7 @@ local function resolve_path(path)
   path = expand_home(path)
   if fs_exists(path) then return path end
   if path:match("^/") then return path end
-  local cwd = vim.loop.cwd(); if cwd then local p=cwd.."/"..path; if fs_exists(p) then return p end end
+  local cwd = uv.cwd(); if cwd then local p=cwd.."/"..path; if fs_exists(p) then return p end end
   local root = get_git_root(); if root then local p=root.."/"..path; if fs_exists(p) then return p end end
   return path
 end
@@ -111,26 +111,14 @@ local function capture_kitty_repl_lines()
     error("Cannot jump from slime kitty traceback: missing slime kitty window id. Select a slime kitty target first.")
   end
 
-  local lines = vim.fn.systemlist({
-    kitty_bin,
-    "@",
-    "--to",
-    listen_on,
-    "get-text",
-    "--match",
-    "id:" .. tostring(window_id),
-    "--extent",
-    "all",
-  })
-  -- Prefer returned text: shell_error can be stale after unrelated kitty RPCs.
-  if #lines == 0 then
-    if vim.v.shell_error ~= 0 then
-      error(("Cannot jump from slime kitty traceback: kitty get-text failed for window id %s on %s."):format(window_id, listen_on))
-    end
+  local text, err = kitty_rpc.get_text(listen_on, window_id, "all")
+  if not text then
+    error(("Cannot jump from slime kitty traceback: kitty get-text failed for window id %s on %s: %s"):format(window_id, listen_on, err))
+  end
+  if text == "" then
     error(("Cannot jump from slime kitty traceback: kitty window id %s on %s returned no text."):format(window_id, listen_on))
   end
-
-  return lines
+  return vim.split(text, "\n", { plain = true })
 end
 
 local function in_tmux()
@@ -604,12 +592,12 @@ local function jump_same_file(lnum)
 end
 
 local function find_bufnr_by_realpath(path)
-  local target = vim.loop.fs_realpath(resolve_path(path)) or resolve_path(path)
+  local target = uv.fs_realpath(resolve_path(path)) or resolve_path(path)
   for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
     if vim.api.nvim_buf_is_loaded(bufnr) then
       local name = vim.api.nvim_buf_get_name(bufnr)
       if name ~= "" then
-        local real = vim.loop.fs_realpath(name) or name
+        local real = uv.fs_realpath(name) or name
         if real == target then return bufnr, target end
       end
     end

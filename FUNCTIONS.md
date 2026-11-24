@@ -19,6 +19,7 @@ Scope: `bin/`, `lua/`, `plugin/`, `python/`, `tests/`, `tools/`, `!tests/repl_se
 - `lua/repl/init.lua`: Public setup entry and backend administration API.
 - `lua/repl/jump_trace.lua`: Capture terminal traceback/tail and navigate frames to source.
 - `lua/repl/kitty_discovery.lua`: Match Kitty windows, process families and existing sessions.
+- `lua/repl/kitty_rpc.lua`: Send ordered text frames and request Kitty replies over a Unix socket with bounded reads and handle cleanup.
 - `lua/repl/kitty_tree.lua`: Read/cache Kitty window trees and refresh changed identities.
 - `lua/repl/paths.lua`: Resolve shared sockets, focus state, registry and namespace paths.
 - `lua/repl/peek.lua`: Evaluate and display values through the socket or file-probe routes.

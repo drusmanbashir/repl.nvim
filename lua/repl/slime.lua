@@ -49,7 +49,7 @@ function M.setup()
     local repl_sections = require("repl.sections")
     local tmux_pane_format = "#{pane_id}\t#{pane_current_command}\t#{pane_start_command}"
     local host_paths = require("repl.config")
-    local kitty_bin = host_paths.kitty_bin()
+    local kitty_rpc = require("repl.kitty_rpc")
     local repl_restart_helper = vim.env.NVIM_SLIME_REPL_RESTART_HELPER
       or host_paths.get().repl_restart_helper
     local ipython_start_command = vim.env.NVIM_SLIME_IPYTHON_START_COMMAND
@@ -73,11 +73,19 @@ function M.setup()
 
     _G.ub_slime_send = function(config, text)
       local target = vim.fn["slime#config#resolve"]("target")
-      local send = vim.fn["slime#targets#" .. target .. "#send"]
-      if vim.bo.filetype ~= "python" or not cell_continues_next
-        or vim.fn["slime#config#resolve"]("bracketed_paste") == 0 then
-        return send(config, text)
+      local hold = vim.bo.filetype == "python" and cell_continues_next
+      if target == "kitty" then
+        local bracketed, paste, has_crlf = unpack(vim.fn["slime#common#bracketed_paste"](text))
+        if bracketed ~= 0 then
+          text = "\27[200~" .. (hold and text or paste) .. "\27[201~"
+        end
+        local execute = not hold and has_crlf ~= 0 and "\n" or nil
+        local sent, err = kitty_rpc.send_text(config.listen_on, config.window_id, text, execute)
+        if not sent then error("Slime Kitty send failed: " .. err, 0) end
+        return
       end
+      local send = vim.fn["slime#targets#" .. target .. "#send"]
+      if not hold or vim.fn["slime#config#resolve"]("bracketed_paste") == 0 then return send(config, text) end
       -- vim-slime converts a trailing LF into Enter even without a CR.
       -- Keep every held newline inside one paste; let the target send it raw.
       local bracketed = vim.b.slime_bracketed_paste
@@ -233,22 +241,7 @@ function M.setup()
       return true
     end
 
-    local function kitty_rpc(listen_on, args, input)
-      local cmd = { kitty_bin, "@", "--to", listen_on }
-      vim.list_extend(cmd, args)
-      local output = vim.fn.system(cmd, input)
-      if vim.v.shell_error ~= 0 then
-        return nil, output
-      end
-      return output
-    end
-
-    -- Last reason a `kitty @ ls` failed, kept so a failed RPC can never be
-    -- reported as "no REPL window". A whole session was lost to that
-    -- confusion: Neovim had run out of file descriptors (a plugin leaking one
-    -- unix socket per request), so every shell-out and every job spawn failed
-    -- process-wide, and the only symptom the user saw was this file claiming
-    -- the live `agent-repl-1` window did not exist.
+    -- Keep a failed window-tree query distinct from an absent REPL window.
     local last_kitty_rpc_error = nil
 
     -- Neovim cannot spawn anything once its fd table is full, so name that
@@ -290,7 +283,7 @@ function M.setup()
       local tree, rpc_error = kitty_cache.get(listen_on, opts)
       if not tree then
         last_kitty_rpc_error = string.format(
-          "kitty @ --to %s ls failed: %s",
+          "Kitty ls on %s failed: %s",
           tostring(listen_on),
           tostring(rpc_error or ""):gsub("%s+", " ")
         )
@@ -429,7 +422,7 @@ function M.setup()
     end
 
     local function send_kitty_text(listen_on, window_id, text)
-      return kitty_rpc(listen_on, { "send-text", "--match", "id:" .. tostring(window_id), "--stdin" }, text) ~= nil
+      return kitty_rpc.send_text(listen_on, window_id, text) ~= nil
     end
 
     local family_session_label = {
@@ -560,8 +553,8 @@ function M.setup()
       if not listen_on or listen_on == "" or not window_id or not window_title or window_title == "" then
         return
       end
-      kitty_rpc(listen_on, { "set-window-title", "--match", "id:" .. tostring(window_id), window_title })
-      kitty_rpc(listen_on, { "set-tab-title", "--match", "window_id:" .. tostring(window_id), window_title })
+      kitty_rpc.request(listen_on, "set-window-title", { match = "id:" .. tostring(window_id), title = window_title })
+      kitty_rpc.request(listen_on, "set-tab-title", { match = "window_id:" .. tostring(window_id), title = window_title })
       -- The send path reads window.title back to compute the next title, so a
       -- cached pre-rename tree here would re-apply the old name forever.
       kitty_cache.invalidate(listen_on)
@@ -860,7 +853,7 @@ function M.setup()
     -- the launch log says so. REPL_ROUTING.md § `M-x` cell-send contract item 8.
     local function wait_for_ipython_prompt(listen_on, window_id)
       local ready = vim.wait(REPL_LAUNCH_TIMEOUT_MS, function()
-        local text = kitty_rpc(listen_on, { "get-text", "--match", "id:" .. tostring(window_id) })
+        local text = kitty_rpc.get_text(listen_on, window_id)
         return text ~= nil and text:find("In %[%d+%]:") ~= nil
       end, 100)
       if not ready then

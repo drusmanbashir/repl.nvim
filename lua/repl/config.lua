@@ -44,6 +44,7 @@ function M.host_script(name)
 end
 function M.focus_back_bin()
   local path = options.focus_back_helper
+  if type(path) == "function" then path = path() end
   return type(path) == "string" and vim.fn.executable(path) == 1 and path or nil
 end
 

@@ -29,7 +29,8 @@ systemd-run example is Linux-only; restart retains the same configured command.
 Each language accepts command, launcher, listen_on, title and window_class.
 Omitting launcher uses the bundled Kitty launcher. Omitting listen_on uses the
 shared runtime socket resolver. Custom desktop placement belongs to a host
-launcher, outside this plugin.
+launcher, outside this plugin. Sends, window queries and focus use the Kitty
+remote-control Unix socket through Neovim.
 
 python_envs: JSON file of project/Conda pairings; default is
 stdpath('data') .. '/repl/python-envs.json'. Missing parent directories are
@@ -38,7 +39,8 @@ win; a missing map uses CONDA_DEFAULT_ENV or the legacy dl default.
 
 backend_config: optional JSON selecting providers by filetype. Default: Slime.
 python_paths: optional JSON of project-specific import roots.
-focus_back_helper: optional compiled OS-window raise helper; false disables it.
+focus_back_helper: optional compiled OS-window raise helper, or a function
+returning its path when needed. Set false to disable the compiled helper.
 focus_target_helper: optional existing host focus bridge.
 focus_lab(bufnr): optional callback for explicit notebook/browser focus.
 callbacks.ensure_iron(): optional host callback loading/configuring Iron.

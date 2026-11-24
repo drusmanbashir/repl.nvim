@@ -42,7 +42,7 @@ With lazy.nvim and a local checkout:
 }
 ```
 
-Use the same setup table with other plugin managers after loading vim-slime. Kitty needs remote control enabled. Python needs IPython. R, Lua, Conda and desktop window tools are needed only for the corresponding features. `systemd-run` caps are Linux user-session features; omitting that prefix leaves memory uncapped. Restart retains the configured Python command. The plugin adds the IPython options and bundled inspection server needed by its send/peek behavior.
+Use the same setup table with other plugin managers after loading vim-slime. Kitty needs an enabled remote-control Unix socket. Slime prepares the payload; the plugin sends it and queries Kitty through Neovim’s socket API. Python needs IPython. R, Lua, Conda and desktop window tools are needed only for the corresponding features. `systemd-run` caps are Linux user-session features; omitting that prefix leaves memory uncapped. Restart retains the configured Python command. The plugin adds the IPython options and bundled inspection server needed by its send/peek behavior.
 
 The plugin follows the [Neovim plugin layout](https://neovim.io/doc/user/lua-plugin/). Its runtime code is under `lua/repl/`; Python helpers are bundled under `bin/` and `python/`.
 
@@ -54,12 +54,12 @@ Other configuration entries:
 
 - `backend_config`: optional JSON file selecting the provider for each filetype. Omit it for Slime defaults. The existing `nvim/repl-backends.json` shape is supported.
 - `python_paths`: optional JSON file of project-specific Python import roots. Omit it to keep the inherited `PYTHONPATH` unchanged.
-- `focus_back_helper`: optional compiled window-raise executable. Without one, Linux uses `xdotool`.
+- `focus_back_helper`: optional compiled window-raise executable or a function returning its path when needed. Without one, Linux uses `xdotool`.
 - `focus_target_helper`: optional host focus bridge for existing desktop shortcuts.
 - `focus_lab(bufnr)`: optional callback to focus the browser page belonging to a notebook.
 - `callbacks.ensure_iron()`: optional host callback to load and configure Iron. Existing host R.nvim and Neopyter adapters register through `repl.actions.register_backend`.
 
-The host configuration at `~/scripts/nvim/lua/user/repl_plugin.lua` documents the active settings and commented alternatives. Generic sends, cell extraction and terminal transports reuse existing plugins. The plugin does not own the DAP console or JupyterLab server lifecycle.
+The host configuration at `~/scripts/nvim/lua/user/repl_plugin.lua` documents the active settings and commented alternatives. Generic sends and cell extraction reuse existing plugins. The plugin does not own the DAP console or JupyterLab server lifecycle.
 
 ## Keys and reverse focus
 

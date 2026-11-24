@@ -1,29 +1,7 @@
--- One cached view of `kitty @ ls`, shared by every REPL consumer.
---
--- Why this exists: a single `send_cell` asked kitty for its whole window tree
--- TWICE -- once from repl_focus.publish_target and once from
--- slime.ensure_slime_target -- through two separate, uncached copies of the
--- same function. Measured 2026-09-01: 50ms per call, and that is not payload
--- (12.6KB; `ls --match id:N` measures the same) but the kitty command-line
--- client's own Python startup. Talking to the socket directly costs 23ms.
---
--- What the cache may NOT break: the operator runs a variable number of python
--- buffers, each bound to its own kitty window running its own conda env, with
--- <leader>it to rebind and <leader>in to launch a new one. So:
---   * a window id that is absent from the cached tree forces ONE refresh
---     before anyone concludes the window is gone -- otherwise <leader>in would
---     launch a REPL that the very next lookup denies exists;
---   * every kitty call that MUTATES the tree (title, launch, close, restart)
---     invalidates it, because the send path reads back the title it just wrote;
---   * the poll loops that watch for a REPL to appear must call fresh(), since
---     a cache is precisely what they are polling to defeat.
---
--- The tree is cached per socket, not per window: one socket hosts one window
--- per conda env (`dl-repl-1` and `agent-repl-1` share
--- unix:/run/user/1000/dl-repl-kitty.sock), and a single `ls` already answers
--- for all of them.
-
-local uv = vim.uv or vim.loop
+-- Cache by socket so send and focus share a single window-tree query.
+-- Invalidate on mutations and refresh before reporting a missing child.
+local kitty_rpc = require("repl.kitty_rpc")
+local uv = vim.uv
 
 local M = {}
 
@@ -38,147 +16,15 @@ local function now_ms()
   return uv.hrtime() / 1e6
 end
 
---- `unix:/run/user/1000/x.sock` -> a path; `unix:@name` -> Linux abstract
---- socket, whose name is a NUL byte followed by the label.
-local function socket_path(listen_on)
-  if type(listen_on) ~= "string" then
-    return nil
-  end
-  local path = listen_on:match("^unix:(.+)$")
-  if not path or path == "" then
-    return nil
-  end
-  if path:sub(1, 1) == "@" then
-    return "\0" .. path:sub(2)
-  end
-  return path
-end
-
---- kitty answers a DCS-wrapped envelope whose `data` is itself a JSON string.
-local function decode_envelope(raw)
-  local body = raw:match("\27P@kitty%-cmd(.-)\27\\")
-  if not body then
-    return nil, "no kitty-cmd envelope in reply"
-  end
-  local ok, envelope = pcall(vim.json.decode, body)
-  if not ok or type(envelope) ~= "table" then
-    return nil, "unparseable kitty envelope"
-  end
-  if not envelope.ok then
-    return nil, tostring(envelope.error or "kitty reported failure")
-  end
-  local data = envelope.data
-  if type(data) == "string" then
-    local decoded_ok, decoded = pcall(vim.json.decode, data)
-    if not decoded_ok then
-      return nil, "unparseable kitty ls payload"
-    end
-    return decoded
-  end
-  return data
-end
-
---- Preferred transport: 23ms, no process spawn.
-local function rpc_socket(listen_on, timeout_ms)
-  local path = socket_path(listen_on)
-  if not path then
-    return nil, "not a unix socket"
-  end
-  local pipe = uv.new_pipe(false)
-  if not pipe then
-    return nil, "could not create pipe"
-  end
-
-  local chunks, finished, failure = {}, false, nil
-  local function close_pipe()
-    if pipe and not pipe:is_closing() then
-      pcall(function()
-        pipe:read_stop()
-      end)
-      pcall(function()
-        pipe:close()
-      end)
-    end
-  end
-  local function finish(err)
-    if finished then
-      return
-    end
-    finished, failure = true, err
-    close_pipe()
-  end
-
-  pipe:connect(path, function(connect_error)
-    if connect_error then
-      finish(tostring(connect_error))
-      return
-    end
-    pipe:read_start(function(read_error, chunk)
-      if read_error then
-        finish(tostring(read_error))
-        return
-      end
-      if not chunk then
-        finish("kitty closed the socket before replying")
-        return
-      end
-      chunks[#chunks + 1] = chunk
-      -- The terminator can straddle two chunks, so test the joined buffer.
-      if table.concat(chunks):find("\27\\", 1, true) then
-        finish(nil)
-      end
-    end)
-    local request = "\27P@kitty-cmd"
-      .. vim.json.encode({ cmd = "ls", version = { 0, 14, 0 }, no_response = false })
-      .. "\27\\"
-    pipe:write(request, function(write_error)
-      if write_error then
-        finish(tostring(write_error))
-      end
-    end)
-  end)
-
-  local completed = vim.wait(timeout_ms or 2000, function()
-    return finished
-  end, 5)
-  close_pipe()
-
-  if not completed then
-    return nil, "timed out waiting for " .. listen_on
-  end
-  if failure then
-    return nil, failure
-  end
-  return decode_envelope(table.concat(chunks))
-end
-
---- Fallback for anything the socket cannot serve (a kitty too old to answer
---- unauthenticated, a socket path this Neovim cannot open). Costs 50ms.
-local function rpc_cli(listen_on)
-  local kitty_bin = require("repl.config").kitty_bin()
-  local output = vim.fn.system({ kitty_bin, "@", "--to", listen_on, "ls" })
-  if vim.v.shell_error ~= 0 then
-    return nil, vim.trim(output or "")
-  end
-  local ok, decoded = pcall(vim.json.decode, output)
-  if not ok or type(decoded) ~= "table" then
-    return nil, "kitty @ ls returned unparseable output for " .. tostring(listen_on)
-  end
-  return decoded
-end
-
 local function fetch(listen_on)
-  local tree, socket_error = rpc_socket(listen_on)
-  if tree then
-    stats.socket = stats.socket + 1
-    return tree
+  local data, err = kitty_rpc.request(listen_on, "ls")
+  if not data then return nil, err end
+  local ok, tree = pcall(vim.json.decode, data)
+  if not ok or type(tree) ~= "table" then
+    return nil, "invalid Kitty ls payload"
   end
-  local cli_tree, cli_error = rpc_cli(listen_on)
-  if cli_tree then
-    stats.cli = stats.cli + 1
-    return cli_tree
-  end
-  return nil, string.format("socket: %s; cli: %s", tostring(socket_error), tostring(cli_error))
+  stats.socket = stats.socket + 1
+  return tree
 end
 
 --- Drop the cached tree for one socket. Call after ANY kitty command that

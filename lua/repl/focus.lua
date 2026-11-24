@@ -5,8 +5,8 @@ local focus_state = require("repl.focus_state")
 local kitty_bin = host_paths.kitty_bin()
 local slime_focus_target_helper = vim.env.NVIM_SLIME_FOCUS_TARGET_HELPER
   or host_paths.get().focus_target_helper
-local uv = vim.uv or vim.loop
-local active_pipes = {}
+local uv = vim.uv
+local kitty_rpc = require("repl.kitty_rpc")
 
 function M.read_state()
   return focus_state.read_state()
@@ -141,13 +141,6 @@ function M.claim_route(target)
   return focus_state.claim_route(target)
 end
 
-local function close_pipe(pipe)
-  active_pipes[pipe] = nil
-  if pipe and not pipe:is_closing() then
-    pipe:close()
-  end
-end
-
 local function mark_binding_stale(bufnr, detail)
   vim.schedule(function()
     if vim.api.nvim_buf_is_valid(bufnr) then
@@ -163,45 +156,9 @@ local function mark_binding_stale(bufnr, detail)
   end)
 end
 
-local function socket_path(listen_on)
-  if type(listen_on) ~= "string" or not vim.startswith(listen_on, "unix:") then
-    return nil
-  end
-  local path = listen_on:sub(6)
-  if path == "" then
-    return nil
-  end
-  if path:sub(1, 1) == "@" then
-    return "\0" .. path:sub(2)
-  end
-  return path
-end
-
 local function focus_kitty_child(binding, callback)
-  local path = socket_path(binding.listen_on)
-  if not path then
-    callback("unsupported kitty socket")
-    return
-  end
-  local pipe = uv.new_pipe(false)
-  active_pipes[pipe] = true
-  pipe:connect(path, function(connect_error)
-    if connect_error then
-      close_pipe(pipe)
-      callback(tostring(connect_error))
-      return
-    end
-    local command = "\27P@kitty-cmd" .. vim.json.encode({
-      cmd = "focus-window",
-      no_response = true,
-      payload = { match = "id:" .. tostring(binding.window_id) },
-      version = { 0, 14, 2 },
-    }) .. "\27\\"
-    pipe:write(command, function(write_error)
-      close_pipe(pipe)
-      callback(write_error and tostring(write_error) or nil)
-    end)
-  end)
+  kitty_rpc.request_async(binding.listen_on, "focus-window", { match = "id:" .. tostring(binding.window_id) },
+    function(_, err) callback(err) end)
 end
 
 --- Front the OS window holding the bound REPL.
