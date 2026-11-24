@@ -1137,11 +1137,16 @@ function M.setup()
       vim.api.nvim_win_call(win, function() vim.cmd("normal! zz") end)
     end
 
-    local function send_motion()
-      if not ensure_slime_target() then
-        return ""
+    local function send_motion_range(kind)
+      if ensure_slime_target() then
+        require("repl.send_motion").slime_send_op(kind)
       end
-      vim.o.operatorfunc = "v:lua.require'repl.send_motion'.slime_send_op"
+    end
+
+    local function send_motion()
+      -- Expression mappings run under textlock. Launch only after g@ receives
+      -- its motion so startup notifications can update their windows.
+      vim.o.operatorfunc = send_motion_range
       return "g@"
     end
 

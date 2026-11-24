@@ -82,6 +82,25 @@ if [ "$no_focus" = "1" ]; then
   fi
 fi
 
+mapped_window() {
+  local wid="${1:-}" lookup="${DL_FOCUS_BACK_BIN:-}" xid
+  if [[ -x "$lookup" ]]; then
+    xid="$("$lookup" --platform-window-id "$socket" "$wid")" || return 1
+  else
+    # Public installations can query the same Kitty instance directly. Cold
+    # creation owns a new socket; warm creation names the returned child id.
+    local match=all
+    [[ -z "$wid" ]] || match="id:$wid"
+    xid="$("$kitty" @ --to "$socket" ls --match "$match" | python3 -c '
+import json, sys
+windows = json.load(sys.stdin)
+print(windows[0]["platform_window_id"] if len(windows) == 1 else 0)
+')" || return 1
+  fi
+  [[ "$xid" =~ ^[1-9][0-9]*$ ]] &&
+    LC_ALL=C xwininfo -id "$xid" | grep -q 'Map State: IsViewable'
+}
+
 restore_focus() {
   [ "$no_focus" = "1" ] || return 0
   if [ "$(uname -s)" = "Darwin" ]; then
@@ -101,17 +120,13 @@ restore_focus() {
     return 0
   fi
   [ -n "$focused_window" ] || return 0
-  local i now xid
+  local i now
   # Kitty reports the platform id of this exact child once its OS window
   # exists. Once mapped, check focus again before deciding to restore it.
-  local lookup="${DL_FOCUS_BACK_BIN:-}"
   for i in 1 2 3 4 5 6 7 8; do
     now="$(xdotool getwindowfocus 2>/dev/null || true)"
     [ -n "$now" ] && [ "$now" != "$focused_window" ] && break
-    if [[ "$now" == "$focused_window" && -x "$lookup" ]] &&
-       xid="$("$lookup" --platform-window-id "$socket" "${1:-}" 2>/dev/null)" &&
-       [[ "$xid" =~ ^[1-9][0-9]*$ ]] &&
-       LC_ALL=C xwininfo -id "$xid" 2>/dev/null | grep -q 'Map State: IsViewable'; then
+    if [[ "$now" == "$focused_window" ]] && mapped_window "${1:-}" 2>/dev/null; then
       break
     fi
     sleep 0.2
