@@ -110,7 +110,7 @@ starting Python to rediscover policy.
 | Environment-pairing config reload | Environment, executable, title, launcher/start command, fingerprint | Source identity |
 | Backend toggle | Backend and fingerprint | Target identity only as dormant history; active binding becomes unbound unless compatible Slime is explicitly rebound |
 | Namespace/session change | Namespace, socket, fingerprint, source identity | Nothing from the foreign namespace |
-| Kitty source window/tab change or `FocusGained` | Source kitty IDs and active projection | Matching spec/binding |
+| Kitty source window/tab change or `FocusGained` | Source kitty IDs and active projection | Matching .spec/binding |
 | Initialize/Bind/restart | Binding identity/status/timestamp | Active source and spec |
 | Target exit or direct-focus failure | Binding status becomes stale outside the hot path | Spec, so explicit Bind can recover |
 | Buffer deletion | Delete only in-memory `vim.b` context | Active disk projection is replaced by the next valid active buffer |
