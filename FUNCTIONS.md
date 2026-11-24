@@ -4,6 +4,7 @@ Scope: `bin/`, `lua/`, `plugin/`, `python/`, `tests/`, `tools/`, `!tests/repl_se
 ## Runtime commands
 - `bin/repl-launch`: launch or reuse the configured external Kitty REPL; receives family, command, environment and socket through environment variables.
 - `bin/slime-repl-restart`: launch IPython or restart the bound Kitty/tmux Python process; retains custom command and environment.
+- `bin/kitty-focus-slime-target`: relay desktop focus to the publishing Neovim, or register the exact numbered pair with --register.
 - `bin/kitty-focus-slime-source`: return from a Kitty child to its exact paired editor; optional compiled selector, complete Python fallback.
 - `bin/dl_repl_paths.py`: print shared runtime path values as JSON or one selected field.
 

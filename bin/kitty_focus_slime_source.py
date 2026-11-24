@@ -35,6 +35,7 @@ contains_word = dl_kitty.contains_word
 is_python_process = dl_kitty.is_python_process
 is_r_process = dl_kitty.is_r_process
 is_lua_process = dl_kitty.is_lua_process
+is_octave_process = dl_kitty.is_octave_process
 active_window_in_os_window = dl_kitty.active_window_in_os_window
 
 
@@ -49,6 +50,10 @@ def window_matches_family(window, family):
         matcher = is_r_process
     elif family == "lua":
         matcher = is_lua_process
+    elif family == "octave":
+        matcher = is_octave_process
+    elif family == "sage":
+        matcher = dl_kitty.is_sage_process
     else:
         return False
     if matcher(window):
@@ -193,6 +198,12 @@ def detect_active_target(extra_sockets=None, expected_window_id=None):
             if expected_window_id and int(window.get("id") or -1) != expected_window_id:
                 continue
             family = FAMILY_BY_SOCKET.get(socket)
+            if window_matches_family(window, "sage"):
+                family = "sage"
+            elif window_matches_family(window, "octave"):
+                family = "octave"
+            elif family in ("octave", "sage"):
+                family = None
             if not family:
                 for candidate in ("python", "r", "lua"):
                     if window_matches_family(window, candidate):

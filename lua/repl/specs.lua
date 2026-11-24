@@ -23,7 +23,7 @@ function M.slime_kitty_spec(family)
     launcher = language.launcher or config.root() .. "/bin/repl-launch",
     listen_on = language.listen_on or require("repl.paths").socket(family),
     start_command = command,
-    title = language.title or (python and require("repl.python_env").repl_title_base() or ({ r = "dl-r-repl", lua = "dl-lua-repl" })[family] or ("repl-" .. family)),
+    title = language.title or (python and require("repl.python_env").repl_title_base() or ({ r = "dl-r-repl", lua = "dl-lua-repl", octave = "dl-octave-repl", sage = "dl-sage-repl" })[family] or ("repl-" .. family)),
     window_class = language.window_class or (python and "ipython-repl" or nil),
   }
 end

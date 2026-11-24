@@ -1,5 +1,40 @@
 local M = {}
 
+local function window_process_matcher(matches_argv)
+  local function matches_process(process)
+    for _, key in ipairs({ "cmdline", "argv", "command", "cmd", "exe" }) do
+      local value = process[key]
+      local argv = type(value) == "table" and value
+        or type(value) == "string" and vim.split(value, "%s+", { trimempty = true })
+      if argv and argv[1] and matches_argv(vim.fs.basename(argv[1]), argv) then
+        return true
+      end
+    end
+    return false
+  end
+
+  return function(window)
+    return matches_process(window) or vim.iter(window.foreground_processes or {}):any(matches_process)
+  end
+end
+
+local sage_programs = { sage = true, ["sage-ipython"] = true }
+local sage_modules = { sage = true, ["sage.cli"] = true, ["sage.cli.__main__"] = true }
+
+M.window_process_matchers = {
+  octave = window_process_matcher(function(name, argv)
+    name = name:gsub("%-%d[%d.]*$", "")
+    return name == "octave" or name == "octave-cli"
+      or (name == "octave-gui" and vim.list_contains(argv, "--no-gui"))
+  end),
+  sage = window_process_matcher(function(name, argv)
+    if sage_programs[name] then return true end
+    if not name:match("^python[%d.]*$") or not argv[2] then return false end
+    return sage_programs[vim.fs.basename(argv[2])] == true
+      or (argv[2] == "-m" and sage_modules[argv[3]] == true)
+  end),
+}
+
 function M.new()
     local function process_text(process)
       if type(process) ~= "table" then
@@ -71,12 +106,14 @@ function M.new()
     end
 
     -- Class match finds every ipython-repl; keep only titles for current env (`{env}-repl`).
-    local function filter_windows_matching_env(windows, base_title)
+    local function filter_windows_matching_env(windows, base_title, sage_socket, sage_class)
       local out = {}
       for _, window in ipairs(windows or {}) do
         local context = window._ub_repl_context or {}
         if repl_title_matches(context.window_title, base_title)
-          or repl_title_matches(context.os_window_name, base_title) then
+          or repl_title_matches(context.os_window_name, base_title)
+          or (sage_socket and context.listen_on == sage_socket and context.os_window_class == sage_class
+            and M.window_process_matchers.sage(window)) then
           table.insert(out, window)
         end
       end
@@ -115,6 +152,7 @@ function M.new()
                 window_id = window.id,
                 window_title = nonempty(window.title),
                 os_window_name = os_window_name,
+                os_window_class = os_window.wm_class,
                 listen_on = listen_on,
               }
               if window._ub_repl_sort[1] then
@@ -156,6 +194,9 @@ function M.new()
     end
 
     local function main_ipython_process(window)
+      if M.window_process_matchers.sage(window) then
+        return nil
+      end
       if is_ipython_process(window) then
         return window
       end

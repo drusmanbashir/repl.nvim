@@ -7,6 +7,8 @@ local family_defaults = {
   python = "slime",
   r = "slime",
   lua = "slime",
+  octave = "slime",
+  sage = "slime",
   other = "slime",
 }
 
@@ -22,6 +24,12 @@ local family_backends = {
     neopyter = true,
   },
   lua = {
+    slime = true,
+  },
+  octave = {
+    slime = true,
+  },
+  sage = {
     slime = true,
   },
   other = {

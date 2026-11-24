@@ -2,9 +2,11 @@ local M = {}
 local root = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h:h:h")
 local options = {
   languages = {
-    python = { launcher = root .. "/bin/repl-launch" },
-    r = { command = "R --quiet --no-save", launcher = root .. "/bin/repl-launch" },
-    lua = { command = "lua", launcher = root .. "/bin/repl-launch" },
+    python = {},
+    r = { command = "R --quiet --no-save" },
+    lua = { command = "lua" },
+    octave = { command = "octave --no-gui --quiet" },
+    sage = { command = "sage" },
   },
   kitty_bin = "kitty",
   target = "kitty",

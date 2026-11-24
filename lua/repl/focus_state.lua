@@ -197,7 +197,7 @@ function M.publish_target(target, resolve_target)
   local resolved_env
   local spec = {}
   local ok_env, repl_env = pcall(require, "repl.python_env")
-  if ok_env then
+  if ok_env and family ~= "octave" and family ~= "sage" then
     resolved_env = repl_env.resolve_for_buffer(0)
   end
   local ok_specs, repl_specs = pcall(require, "repl.specs")
@@ -240,6 +240,7 @@ function M.publish_target(target, resolve_target)
     window_id = ready and window_id or nil,
   }
   local source = {
+    nvim_server = vim.v.servername,
     buffer_id = vim.api.nvim_get_current_buf(),
     filetype = vim.bo.filetype,
     kitty_listen_on = vim.env.KITTY_LISTEN_ON,

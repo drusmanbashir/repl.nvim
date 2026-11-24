@@ -13,9 +13,10 @@ family="${DL_REPL_FAMILY:-python}"
 command="${DL_REPL_COMMAND:-}"
 python_command="${NVIM_REPL_COMMAND:-}"
 if [ "$family" = "python" ]; then
-  start_command="$(printf '%q' "$root/bin/slime-repl-restart") start-ipython"
+  # Keep a shell behind IPython for in-place restart and a usable prompt on exit.
+  start_command="$(printf '%q' "${NVIM_SLIME_REPL_RESTART_HELPER:-$root/bin/slime-repl-restart}") start-ipython; exec \"${SHELL:-/bin/bash}\" -l"
 elif [ -n "$command" ]; then
-  start_command="$command"
+  start_command="exec $command"
 else
   printf 'repl-launch: DL_REPL_COMMAND is required for family %s\n' "$family" >&2
   exit 1
@@ -55,7 +56,7 @@ if [ "$family" = "python" ]; then
 else
   args+=(--env "DL_REPL_COMMAND=$command" --env NVIM_REPL_COMMAND)
 fi
-for name in NVIM_REPL_ENVS_CONFIG PYTHONPATH NVIM_SLIME_KITTY_BIN; do
+for name in NVIM_REPL_ENVS_CONFIG PYTHONPATH NVIM_SLIME_KITTY_BIN DL_FOCUS_SLIME_STATE_FILE DL_FOCUS_SLIME_REGISTRY_FILE DL_FOCUS_BACK_BIN; do
   if [ -n "${!name:-}" ]; then
     args+=(--env "$name=${!name}")
   else
@@ -114,23 +115,33 @@ restore_focus() {
   done
 }
 
+place_new_window() {
+  if [ -n "${DL_REPL_PLACE_WINDOW:-}" ]; then
+    "$DL_REPL_PLACE_WINDOW" "$socket" "$kitty" "$1" "$title" || echo "repl-launch: could not place $title" >&2
+  fi
+}
+
 if "$kitty" @ --to "$socket" ls >/dev/null 2>&1; then
-  if "$kitty" @ --to "$socket" ls --match "title:^${title}$" >/dev/null 2>&1; then
+  existing="$("$kitty" @ --to "$socket" ls --match "title:^${title}$" 2>/dev/null || true)"
+  if [[ "${existing//[[:space:]]/}" == '[{'* ]]; then
     if [ "$no_focus" != "1" ]; then
       "$kitty" @ --to "$socket" focus-window --match "title:^${title}$"
     fi
     exit 0
   fi
-  "$kitty" @ --to "$socket" launch --type=os-window \
+  wid="$("$kitty" @ --to "$socket" launch --type=os-window \
     --os-window-class "$class" --os-window-title "$title" --title "$title" \
-    "${args[@]}" "${BASH:-bash}" -lc "export KITTY_SHELL_INTEGRATION=no-title; exec $start_command"
+    "${args[@]}" "${BASH:-bash}" -lc "export KITTY_SHELL_INTEGRATION=no-title; $start_command")"
+  printf '%s\n' "$wid"
   restore_focus
+  place_new_window "$wid"
   exit 0
 fi
 
 cold_args=(--listen-on "$socket" -o allow_remote_control=socket-only -T "$title" --detach)
 if [ "$(uname -s)" != "Darwin" ]; then
-  cold_args+=(--class "$class")
+  cold_args+=(--class "$class" --name "$title")
 fi
-"$kitty" "${cold_args[@]}" "${BASH:-bash}" -lc "export KITTY_SHELL_INTEGRATION=no-title; exec $start_command"
+"$kitty" "${cold_args[@]}" "${BASH:-bash}" -lc "export KITTY_SHELL_INTEGRATION=no-title; $start_command"
 restore_focus
+place_new_window ""

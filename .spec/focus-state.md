@@ -195,7 +195,7 @@ launch algorithms.
 | `slime.register_kitty_repl` | Ensure/discover/start/select mixture | Split Initialize from Bind |
 | `slime.launch_new_repl` | Explicit new-window creation | Initialize, then Bind |
 | `slime.discover_kitty_repl_target` | Existing-target discovery without launch | Bind |
-| `kitty-focus-slime-target` | Resolve, repair, register, and focus for external compatibility consumers | No longer used by Neovim's ready-focus path; prompt mutation removed |
+| `kitty-focus-slime-target` | Relay desktop focus to the publishing editor and register exact pairs for numbered shortcuts | Desktop and Neovim share the same focus action |
 
 `publish_target`, `BufEnter`, and `FocusGained` write state/context only and
 never create, overwrite, or remove a reverse route. The single explicit

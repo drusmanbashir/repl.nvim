@@ -58,6 +58,10 @@ local function process_matches_family(process, family)
 end
 
 local function window_matches_family(window, family)
+  local matchers = require("repl.kitty_discovery").window_process_matchers
+  local matches_process = matchers[family]
+  if matches_process then return matches_process(window) end
+  if family == "python" and matchers.sage(window) then return false end
   if process_matches_family(window, family) then
     return true
   end
@@ -285,13 +289,21 @@ local function register_pair(target)
     return false
   end
 
-  local previous_no_focus = vim.env.DL_FOCUS_SLIME_NO_FOCUS
-  local previous_kitty_bin = vim.env.DL_FOCUS_KITTY_BIN
-  vim.env.DL_FOCUS_SLIME_NO_FOCUS = "1"
-  vim.env.DL_FOCUS_KITTY_BIN = kitty_bin
-  local output = vim.fn.system({ slime_focus_target_helper })
-  vim.env.DL_FOCUS_SLIME_NO_FOCUS = previous_no_focus
-  vim.env.DL_FOCUS_KITTY_BIN = previous_kitty_bin
+  local entry = {
+    family = family,
+    source = {
+      listen_on = vim.env.KITTY_LISTEN_ON,
+      window_id = tonumber(vim.env.KITTY_WINDOW_ID),
+      platform_window_id = tonumber(vim.env.WINDOWID),
+    },
+    target = {
+      family = family,
+      listen_on = listen_on,
+      window_id = window_id,
+      platform_window_id = target.platform_window_id,
+    },
+  }
+  local output = vim.fn.system({ slime_focus_target_helper, "--register" }, vim.json.encode(entry))
   if vim.v.shell_error == 0 then
     return true
   end

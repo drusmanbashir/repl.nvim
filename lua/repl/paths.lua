@@ -19,6 +19,8 @@ local FAMILY_BASE = {
 	python = "dl-repl",
 	r = "dl-r-repl",
 	lua = "dl-lua-repl",
+	octave = "dl-octave-repl",
+	sage = "dl-sage-repl",
 }
 
 -- Per-family user override. Distinct from DL_REPL_SOCKET, which dl-session-env
@@ -28,6 +30,8 @@ local FAMILY_OVERRIDE = {
 	python = "DL_REPL_SOCKET_OVERRIDE",
 	r = "DL_R_REPL_SOCKET_OVERRIDE",
 	lua = "DL_LUA_REPL_SOCKET_OVERRIDE",
+	octave = "DL_OCTAVE_REPL_SOCKET_OVERRIDE",
+	sage = "DL_SAGE_REPL_SOCKET_OVERRIDE",
 }
 
 -- Session-scoped socket exported by mac/dl-session-env, consumed but never
@@ -36,9 +40,11 @@ local FAMILY_SESSION = {
 	python = "DL_REPL_SOCKET",
 	r = "DL_R_REPL_SOCKET",
 	lua = "DL_LUA_REPL_SOCKET",
+	octave = "DL_OCTAVE_REPL_SOCKET",
+	sage = "DL_SAGE_REPL_SOCKET",
 }
 
-M.families = { "python", "r", "lua" }
+M.families = { "python", "r", "lua", "octave", "sage" }
 
 local function env(name)
 	local value = vim.env[name]

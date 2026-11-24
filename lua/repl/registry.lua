@@ -11,6 +11,8 @@ M.filetype_family = {
   rhelp = "r",
   rout = "r",
   lua = "lua",
+  octave = "octave",
+  sage = "sage",
 }
 
 local function config_path()
@@ -24,7 +26,7 @@ local function normalize_family(value)
   end
 
   local normalized = value:lower()
-  if normalized == "r" or normalized == "python" or normalized == "lua" or normalized == "other" then
+  if normalized == "r" or normalized == "python" or normalized == "lua" or normalized == "octave" or normalized == "sage" or normalized == "other" then
     return normalized
   end
 
@@ -95,8 +97,8 @@ function M.load()
     end
   end
 
-  for family, backend in pairs({ python = "slime", r = "slime", lua = "slime", other = "slime" }) do
-    registry.family_defaults[family] = backend
+  for family, backend in pairs({ python = "slime", r = "slime", lua = "slime", octave = "slime", sage = "slime", other = "slime" }) do
+    registry.family_defaults[family] = registry.family_defaults[family] or backend
   end
 
   for _, entry in ipairs(config_entries(config)) do

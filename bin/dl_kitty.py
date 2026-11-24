@@ -127,7 +127,7 @@ def contains_word(text, word):
 
 
 def is_python_process(process):
-    return "ipython" in process_text(process)
+    return not is_sage_process(process) and "ipython" in process_text(process)
 
 
 def is_r_process(process):
@@ -138,6 +138,37 @@ def is_r_process(process):
 def is_lua_process(process):
     text = process_text(process)
     return contains_word(text, "lua") or contains_word(text, "luajit")
+
+
+def process_argvs(process):
+    for key in ("cmdline", "argv", "command", "cmd", "exe"):
+        value = process.get(key)
+        argv = value if isinstance(value, list) else str(value or "").split()
+        if argv:
+            yield os.path.basename(argv[0]), argv[1:]
+
+
+def is_octave_process(process):
+    for name, args in process_argvs(process):
+        name = re.sub(r"-[0-9][0-9.]*$", "", name)
+        if name in ("octave", "octave-cli") or (name == "octave-gui" and "--no-gui" in args):
+            return True
+    return False
+
+
+def is_sage_process(process):
+    programs = ("sage", "sage-ipython")
+    modules = ("sage", "sage.cli", "sage.cli.__main__")
+    for name, args in process_argvs(process):
+        if name in programs:
+            return True
+        if not re.fullmatch(r"python[0-9.]*", name) or not args:
+            continue
+        if os.path.basename(args[0]) in programs:
+            return True
+        if len(args) > 1 and args[0] == "-m" and args[1] in modules:
+            return True
+    return False
 
 
 # ---------------------------------------------------------------------------

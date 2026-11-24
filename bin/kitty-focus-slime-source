@@ -4,6 +4,7 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd -- "$script_dir/.." && pwd)"
+native_src="${DL_FOCUS_NATIVE_SRC:-$root/bin/src}"
 pressing_window_id=""
 if [ "${1:-}" = "--window-id" ]; then
 	case "${2:-}" in
@@ -66,20 +67,20 @@ mark_implementation() {
 # (sinclair/kitty-focus-edit) must not run its fallback chain. Anything else falls
 # through to Python below.
 if [ -z "$registry_arg" ] && [ -n "${DL_FOCUS_BACK_BIN:-}" ] && [ -x "$DL_FOCUS_BACK_BIN" ] &&
-	[ -r "$root/bin/src/PROTOCOL" ] &&
-	[ ! "$root/bin/src/kitty-focus-back.c" -nt "$DL_FOCUS_BACK_BIN" ] &&
-	[ ! "$root/bin/src/kitty-focus-json.c" -nt "$DL_FOCUS_BACK_BIN" ] &&
-	[ ! "$root/bin/src/kitty-focus-json.h" -nt "$DL_FOCUS_BACK_BIN" ] &&
-	[ ! "$root/bin/src/kitty-focus-transport.c" -nt "$DL_FOCUS_BACK_BIN" ] &&
-	[ ! "$root/bin/src/kitty-focus-transport.h" -nt "$DL_FOCUS_BACK_BIN" ] &&
-	[ ! "$root/bin/src/jsmn.h" -nt "$DL_FOCUS_BACK_BIN" ] &&
-	[ ! "$root/bin/src/PROTOCOL" -nt "$DL_FOCUS_BACK_BIN" ]; then
+	[ -r "$native_src/PROTOCOL" ] &&
+	[ ! "$native_src/kitty-focus-back.c" -nt "$DL_FOCUS_BACK_BIN" ] &&
+	[ ! "$native_src/kitty-focus-json.c" -nt "$DL_FOCUS_BACK_BIN" ] &&
+	[ ! "$native_src/kitty-focus-json.h" -nt "$DL_FOCUS_BACK_BIN" ] &&
+	[ ! "$native_src/kitty-focus-transport.c" -nt "$DL_FOCUS_BACK_BIN" ] &&
+	[ ! "$native_src/kitty-focus-transport.h" -nt "$DL_FOCUS_BACK_BIN" ] &&
+	[ ! "$native_src/jsmn.h" -nt "$DL_FOCUS_BACK_BIN" ] &&
+	[ ! "$native_src/PROTOCOL" -nt "$DL_FOCUS_BACK_BIN" ]; then
 	compiled_rc=0
 	compiled_args=()
 	if [ -n "$pressing_window_id" ]; then
 		compiled_args=(--window-id "$pressing_window_id")
 	fi
-	DL_FOCUS_BACK_PROTOCOL_EXPECT="$(<"$root/bin/src/PROTOCOL")" \
+	DL_FOCUS_BACK_PROTOCOL_EXPECT="$(<"$native_src/PROTOCOL")" \
 		"$DL_FOCUS_BACK_BIN" "${compiled_args[@]}" || compiled_rc=$?
 	case "$compiled_rc" in
 	0 | 4)

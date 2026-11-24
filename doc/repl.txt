@@ -19,6 +19,8 @@ SETUP                                                              *repl-setup*
       },
       r = { command = 'R --quiet --no-save' },
       lua = { command = 'lua' },
+      octave = { command = 'octave --no-gui --quiet' },
+      sage = { command = 'sage' },
     },
   })
 <
@@ -28,9 +30,12 @@ systemd-run example is Linux-only; restart retains the same configured command.
 
 Each language accepts command, launcher, listen_on, title and window_class.
 Omitting launcher uses the bundled Kitty launcher. Omitting listen_on uses the
-shared runtime socket resolver. Custom desktop placement belongs to a host
-launcher, outside this plugin. Sends, window queries and focus use the Kitty
-remote-control Unix socket through Neovim.
+shared runtime socket resolver. Set place_window_helper once to position new
+Kitty windows for every family using the bundled launcher. It receives the
+socket, Kitty executable, window ID (empty on cold launch) and title as
+arguments, and DL_REPL_FAMILY in its environment. Reuse preserves position.
+Sends, window queries and focus use the Kitty remote-control Unix socket
+through Neovim.
 
 python_envs: JSON file of project/Conda pairings; default is
 stdpath('data') .. '/repl/python-envs.json'. Missing parent directories are
@@ -52,8 +57,15 @@ M-x     Send the current percent cell and advance.
 M-X     Send the current SECTION block and advance.
 M-i     Find and send the import for the symbol under the cursor.
 M-k     Inspect the expression's value without launching a session.
-M-R     Restart the bound terminal Python REPL.
+M-R     Restart the bound Python, Octave or SageMath REPL in its terminal window.
 M-h     Focus the matching debug, notebook or ready terminal destination.
+
+In a .m file that Neovim identifies as Octave, # %% starts a cell. Startup
+and restart wait for Octave's standard octave:N> prompt. Octave uses Kitty.
+
+In a .sage file, # %% starts a cell. SageMath uses a separate Kitty target
+and its own syntax. Startup and restart wait for the standard sage: prompt.
+M-R replaces the process using the configured command in the same window.
 
 Setup installs the existing keymaps. Override them with |vim.keymap.set()|.
 :ReplPeekStyle inline|popup|toggle changes the inspection display style.

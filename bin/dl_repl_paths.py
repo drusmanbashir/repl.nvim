@@ -26,6 +26,8 @@ FAMILY_BASE = {
     "python": "dl-repl",
     "r": "dl-r-repl",
     "lua": "dl-lua-repl",
+    "octave": "dl-octave-repl",
+    "sage": "dl-sage-repl",
 }
 
 # Per-family user override. Distinct from DL_REPL_SOCKET, which dl-session-env
@@ -34,6 +36,8 @@ FAMILY_OVERRIDE = {
     "python": "DL_REPL_SOCKET_OVERRIDE",
     "r": "DL_R_REPL_SOCKET_OVERRIDE",
     "lua": "DL_LUA_REPL_SOCKET_OVERRIDE",
+    "octave": "DL_OCTAVE_REPL_SOCKET_OVERRIDE",
+    "sage": "DL_SAGE_REPL_SOCKET_OVERRIDE",
 }
 
 # Session-scoped socket exported by mac/dl-session-env; consumed, never written.
@@ -41,9 +45,11 @@ FAMILY_SESSION = {
     "python": "DL_REPL_SOCKET",
     "r": "DL_R_REPL_SOCKET",
     "lua": "DL_LUA_REPL_SOCKET",
+    "octave": "DL_OCTAVE_REPL_SOCKET",
+    "sage": "DL_SAGE_REPL_SOCKET",
 }
 
-FAMILIES = ["python", "r", "lua"]
+FAMILIES = ["python", "r", "lua", "octave", "sage"]
 
 _NAMESPACE_UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
 

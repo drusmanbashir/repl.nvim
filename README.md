@@ -36,19 +36,25 @@ With lazy.nvim and a local checkout:
           -- command = "luajit", -- LuaJIT, when installed
           -- command = "/absolute/path/to/lua", -- pin an interpreter
         },
+        octave = {
+          command = "octave --no-gui --quiet", -- GNU Octave on PATH
+        },
+        sage = {
+          command = "sage", -- SageMath on PATH
+        },
       },
     })
   end,
 }
 ```
 
-Use the same setup table with other plugin managers after loading vim-slime. Kitty needs an enabled remote-control Unix socket. Slime prepares the payload; the plugin sends it and queries Kitty through Neovim’s socket API. Python needs IPython. R, Lua, Conda and desktop window tools are needed only for the corresponding features. `systemd-run` caps are Linux user-session features; omitting that prefix leaves memory uncapped. Restart retains the configured Python command. The plugin adds the IPython options and bundled inspection server needed by its send/peek behavior.
+Use the same setup table with other plugin managers after loading vim-slime. Kitty needs an enabled remote-control Unix socket. Slime prepares the payload; the plugin sends it and queries Kitty through Neovim’s socket API. Python needs IPython. R, Lua, GNU Octave, SageMath, Conda and desktop window tools are needed only for the corresponding features. `systemd-run` caps are Linux user-session features; omitting that prefix leaves memory uncapped. Restart retains the configured Python command. The plugin adds the IPython options and bundled inspection server needed by its send/peek behavior.
 
 The plugin follows the [Neovim plugin layout](https://neovim.io/doc/user/lua-plugin/). Its runtime code is under `lua/repl/`; Python helpers are bundled under `bin/` and `python/`.
 
 ## Configuration
 
-`languages.python`, `languages.r` and `languages.lua` each accept a `command` and `launcher`. A launcher is an executable that opens a Kitty REPL window; omitting it uses the bundled launcher. Set a host launcher when your desktop needs a placement policy. The launcher receives the resolved socket, title, command and environment through environment variables.
+`backend_config` selects a family and engine for each filetype. All Slime/Kitty families use the bundled launcher by default. Set `place_window_helper` once for desktop placement. After creating a window, the launcher calls it with the resolved socket, Kitty executable, child window ID (empty on a cold start) and title. The helper receives the language in `DL_REPL_FAMILY`. Reusing a window preserves its position. Each language can configure its interpreter `command` or explicitly override the `launcher`.
 
 Other configuration entries:
 
@@ -64,6 +70,10 @@ The host configuration at `~/scripts/nvim/lua/user/repl_plugin.lua` documents th
 ## Keys and reverse focus
 
 The existing send/focus actions are available through `repl.backend`, `repl.actions` and `repl.focus_route`. `M-x` sends a cell; `M-X` sends a SECTION block; `M-e` sends a line or selection; `M-k` peeks (the sidecar value popup while debugging, with no console text); `M-R` restarts; `M-h` focuses the paired destination. The Python continuation state belongs to each target and resets on restart.
+
+In a `.m` file that Neovim identifies as Octave, `# %%` marks a cell. `M-x` sends the cell to the paired Octave window. `M-R` starts a fresh Octave session in that same window using the configured command. Startup and restart wait for Octave's standard `octave:N>` prompt.
+
+In a `.sage` file, `# %%` marks a cell. `M-x` sends it to a separate SageMath window. SageMath interprets its own syntax, including `^` for powers. `M-R` replaces the SageMath process in the same Kitty window using the configured command. Use SageMath's standard interactive prompt (`sage:`).
 
 For reverse focus from Kitty, invoke the bundled `bin/kitty-focus-slime-source --window-id <active Kitty child ID>`. The existing host Kitty/desktop shortcuts remain supported by their desktop entrypoints. Unbound terminals are a no-op; bindings do not expire with age.
 

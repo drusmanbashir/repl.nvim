@@ -147,7 +147,9 @@ class RuntimeContract(unittest.TestCase):
         launch = self.calls()[-1]
         joined = " ".join(launch)
         self.assertIn("NVIM_REPL_COMMAND=systemd-run --user --scope -p MemoryMax=1G ipython", joined)
-        self.assertIn("exec /", launch[launch.index("-lc") + 1])
+        command = launch[launch.index("-lc") + 1]
+        self.assertIn(f"{RESTART} start-ipython; exec ", command)
+        self.assertTrue(command.endswith(' -l'))
         self.assertNotIn("DL_REPL_COMMAND=/plugin", joined)
 
 

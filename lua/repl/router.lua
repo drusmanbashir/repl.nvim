@@ -264,6 +264,10 @@ function M.resolve_restart(context)
   local bufnr = context.bufnr or vim.api.nvim_get_current_buf()
   local filetype = context.filetype or vim.bo.filetype or ""
   local configured = context.backend or repl_backend.current()
+  local family = context.family or repl_backend.family_for_filetype(filetype)
+  if family == "octave" or family == "sage" then
+    return "slime", "configured"
+  end
 
   if configured == "iron" then
     return "iron", "configured"

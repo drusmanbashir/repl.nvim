@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+"""Relay desktop focus to the publishing editor, or register an exact numbered pair."""
+import fcntl
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
+
+import dl_kitty
+import dl_repl_paths
+
+
+def register_pair(entry):
+    source_key = dl_kitty.window_key(entry["source"])
+    target_key = dl_kitty.window_key(entry["target"])
+    if not source_key or not target_key:
+        return
+    path = Path(dl_repl_paths.registry_file())
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.with_suffix(path.suffix + ".lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        registry = dl_kitty.load_registry(path)
+        pairs = registry["_pairs"]
+        by_source = registry["_by_source"]
+        by_target = registry["_by_target"]
+        for key in {by_source.get(source_key), by_target.get(target_key)}:
+            old = pairs.pop(key, None)
+            if old:
+                for index, side in ((by_source, "source"), (by_target, "target")):
+                    identity = dl_kitty.window_key(old[side])
+                    if index.get(identity) == key:
+                        del index[identity]
+                if registry.get(old["family"]) == old:
+                    del registry[old["family"]]
+        key = f"{source_key}=>{target_key}"
+        entry["updated_at"] = int(time.time())
+        pairs[key] = registry[entry["family"]] = entry
+        by_source[source_key] = by_target[target_key] = key
+        registry["_version"] = 2
+        temporary = path.with_suffix(path.suffix + f".{os.getpid()}")
+        temporary.write_text(json.dumps(registry) + "\n")
+        temporary.replace(path)
+
+
+def focus_editor_target(state):
+    source = state.get("source", {})
+    server = source.get("nvim_server")
+    if not server or state.get("backend") == "iron":
+        return False
+    namespace = os.environ.get("DL_SESSION_NAMESPACE")
+    if namespace and namespace != state.get("namespace"):
+        return False
+    pid, buffer = int(source["nvim_pid"]), int(source["buffer_id"])
+    expr = (f"getpid() == {pid} && bufnr() == {buffer} && "
+            """luaeval('require("repl.focus_route").focus()')""")
+    result = subprocess.run(["nvim", "--server", server, "--remote-expr", expr],
+                            capture_output=True, text=True, timeout=2)
+    return result.returncode == 0 and result.stdout.strip() == "1"
+
+
+if __name__ == "__main__":
+    if sys.argv[1:] == ["--register"]:
+        register_pair(json.load(sys.stdin))
+    else:
+        path = sys.argv[1] if len(sys.argv) > 1 else dl_repl_paths.state_file()
+        try:
+            state = dl_kitty.load_json(path)
+            if os.environ.get("DL_FOCUS_SLIME_NO_FOCUS", "") not in ("", "0"):
+                # Editors started before --register publish both identities in this file.
+                if state.get("sender_listen_on") and state.get("listen_on") and state.get("window_id"):
+                    register_pair({
+                        "family": state["family"],
+                        "source": {"listen_on": state["sender_listen_on"], "window_id": state["sender_window_id"],
+                                   "platform_window_id": state.get("sender_platform_window_id")},
+                        "target": {key: state.get(key) for key in ("family", "listen_on", "platform_window_id", "window_id")},
+                    })
+                handled = True
+            else:
+                handled = focus_editor_target(state)
+        except (OSError, ValueError, KeyError, subprocess.TimeoutExpired):
+            handled = False
+        sys.exit(0 if handled else 5)

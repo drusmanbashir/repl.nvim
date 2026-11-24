@@ -36,7 +36,9 @@ end
 function M.setup()
     if M._setup then return true end
     local keymap = vim.keymap.set
-    local discovery = require("repl.kitty_discovery").new()
+    local kitty_discovery = require("repl.kitty_discovery")
+    local window_process_matchers = kitty_discovery.window_process_matchers
+    local discovery = kitty_discovery.new()
     local repl_title_matches = discovery.repl_title_matches
     local filter_windows_matching_env = discovery.filter_windows_matching_env
     local window_matches_env = discovery.window_matches_env
@@ -124,6 +126,7 @@ function M.setup()
     end
 
     local function send_to_dap_repl(text, focus)
+      if window_process_matchers[vim.bo.filetype] then return false end
       local ok_console, console = pcall(require, "dap-sidecar.extensions.python.console")
       local console_ok, available = false, false
       if ok_console then console_ok, available = pcall(console.available) end
@@ -428,6 +431,8 @@ function M.setup()
     local family_session_label = {
       python = "IPython",
       r = "R",
+      octave = "Octave",
+      sage = "SageMath",
     }
 
     local function select_session(family, sessions)
@@ -457,6 +462,8 @@ function M.setup()
     local function family_sessions(family, windows)
       if family == "python" then return ipython_sessions(windows) end
       if family == "r" then return r_sessions(windows) end
+      local matches_process = window_process_matchers[family]
+      if matches_process then windows = vim.tbl_filter(matches_process, windows) end
       return generic_sessions(windows, family)
     end
 
@@ -635,17 +642,21 @@ function M.setup()
       return windows
     end
 
-    local function repl_launch_env(window_title, window_class)
+    local function repl_launch_env(family, window_title, window_class)
       -- Copy then mutate: must drop a stale NVIM_SLIME_IPYTHON_EXECUTABLE so the
       -- helper cannot inherit agent from a prior buffer when resolve is empty.
       local env = vim.fn.environ()
-      local family = current_slime_family()
       local spec = require("repl.specs").slime_kitty_spec(family)
       env.DL_REPL_FAMILY = family
+      env.DL_REPL_PLACE_WINDOW = host_paths.get().place_window_helper
+      local paths = require("repl.paths")
+      env.DL_FOCUS_SLIME_STATE_FILE = paths.state_file()
+      env.DL_FOCUS_SLIME_REGISTRY_FILE = paths.registry_file()
+      env.DL_FOCUS_BACK_BIN = env.DL_FOCUS_BACK_BIN or host_paths.focus_back_bin()
       env.NVIM_SLIME_KITTY_BIN = host_paths.kitty_bin()
       env.DL_REPL_COMMAND = spec.start_command
       local python_command = host_paths.language("python").command
-      env.NVIM_REPL_COMMAND = current_slime_family() == "python" and python_command and python_command ~= "" and python_command or nil
+      env.NVIM_REPL_COMMAND = family == "python" and python_command and python_command ~= "" and python_command or nil
       env.NVIM_REPL_ENVS_CONFIG = host_paths.get().python_envs
       env.DL_REPL_SOCKET = spec.listen_on
       env.DL_REPL_WINDOW_TITLE = window_title
@@ -653,6 +664,10 @@ function M.setup()
       -- The user is typing in nvim; a REPL that appears as a side effect of
       -- <M-x> must not take the keyboard. Manual launcher runs leave this unset.
       env.DL_REPL_NO_FOCUS = "1"
+      if window_process_matchers[family] then
+        env.NVIM_SLIME_IPYTHON_EXECUTABLE = nil
+        return env
+      end
       local ok, repl_env = pcall(require, "repl.python_env")
       local ipython = ok and repl_env.ipython_cmd() or nil
       local pythonpath = nil
@@ -680,13 +695,16 @@ function M.setup()
     -- as soon as the launcher process itself exits non-zero (see repl_launch).
     local REPL_LAUNCH_TIMEOUT_MS = 15000
 
-    local function wait_for_env_kitty_windows(listen_on, title, window_class, launch)
+    local function wait_for_env_kitty_windows(family, listen_on, title, window_class, launch, matches_process)
       local windows = {}
       vim.wait(REPL_LAUNCH_TIMEOUT_MS, function()
         windows = filter_windows_matching_env(
           repl_kitty_windows_for(listen_on, title, window_class),
-          title
+          title,
+          family == "sage" and listen_on or nil,
+          window_class
         )
+        if matches_process then windows = vim.tbl_filter(matches_process, windows) end
         if #windows > 0 then
           return true
         end
@@ -768,7 +786,7 @@ function M.setup()
     -- `mac/dl-repl-window` died instantly on kitty 0.45's removed --class flag
     -- and <M-x> still reported only "Could not find kitty REPL window ...".
     -- Capture the launcher's own stderr/exit status so the message names it.
-    local function repl_launch(launcher, window_title, window_class)
+    local function repl_launch(family, launcher, window_title, window_class)
       if not launcher or launcher == "" or vim.fn.executable(launcher) ~= 1 then
         return nil, "REPL launcher not found: " .. tostring(launcher)
       end
@@ -781,7 +799,7 @@ function M.setup()
       local launch = { launcher = launcher, stderr = {} }
       vim.fn.jobstart({ launcher }, {
         detach = true,
-        env = repl_launch_env(window_title, window_class),
+        env = repl_launch_env(family, window_title, window_class),
         on_stderr = function(_, data)
           for _, line in ipairs(data or {}) do
             if line ~= "" then
@@ -810,21 +828,37 @@ function M.setup()
       return table.concat(parts, ": ")
     end
 
-    local function ensure_repl_kitty_window(listen_on, title, launcher, window_class)
+    local function ensure_repl_kitty_window(family, listen_on, title, launcher, window_class)
       local windows = filter_windows_matching_env(
         repl_kitty_windows_for(listen_on, title, window_class),
-        title
+        title,
+        family == "sage" and listen_on or nil,
+        window_class
       )
-      if #windows > 0 then
-        return windows, false
+      local matches_process = window_process_matchers[family]
+      if family == "python" then
+        matches_process = function(window) return not window_process_matchers.sage(window) end
+      end
+      local existing = matches_process and vim.tbl_filter(matches_process, windows) or windows
+      if #existing > 0 then
+        if family == "sage" then
+          for _, window in ipairs(existing) do
+            if not window_matches_env(window, title) then
+              local window_title = next_repl_window_title(title, windows)
+              set_kitty_repl_titles(listen_on, window.id, window_title)
+              window._ub_repl_context.window_title = window_title
+            end
+          end
+        end
+        return existing, false
       end
 
       local window_title = next_repl_window_title(title, windows)
-      local launch, launch_error = repl_launch(launcher, window_title, window_class)
+      local launch, launch_error = repl_launch(family, launcher, window_title, window_class)
       if not launch then
         return {}, true, launch_error
       end
-      windows = wait_for_env_kitty_windows(listen_on, title, window_class, launch)
+      windows = wait_for_env_kitty_windows(family, listen_on, title, window_class, launch, matches_process)
       if #windows > 0 then
         set_kitty_repl_titles(listen_on, windows[1].id, window_title)
         return windows, true
@@ -881,6 +915,24 @@ function M.setup()
       return nil
     end
 
+    local kitty_prompts = {
+      octave = { first = "octave:1>%s*$", any = "octave:%d+>%s*$" },
+      sage = { first = "sage:%s*$", any = "sage:%s*$" },
+    }
+
+    local function kitty_screen(listen_on, window_id)
+      return kitty_rpc.get_text(listen_on, window_id)
+    end
+
+    local function wait_for_kitty_prompt(listen_on, window_id, pattern, previous)
+      local screen
+      local ready = vim.wait(REPL_LAUNCH_TIMEOUT_MS, function()
+        screen = kitty_screen(listen_on, window_id)
+        return screen == nil or (screen ~= previous and screen:match(pattern) ~= nil)
+      end, 100)
+      return ready and screen or nil
+    end
+
     local function register_kitty_repl(force_select)
       local family, listen_on, title, window_class, launcher, start_command = current_kitty_target()
       if not listen_on or listen_on == "" then
@@ -896,7 +948,7 @@ function M.setup()
         )
       else
         windows, launched_window, launch_error =
-          ensure_repl_kitty_window(listen_on, title, launcher, window_class)
+          ensure_repl_kitty_window(family, listen_on, title, launcher, window_class)
       end
       if #windows == 0 then
         notify_launch_failure(
@@ -911,10 +963,15 @@ function M.setup()
 
       if launched_window and family == "python" then
         wait_for_ipython_prompt(listen_on, windows[1].id)
+      elseif launched_window and kitty_prompts[family] then
+        if not wait_for_kitty_prompt(listen_on, windows[1].id, kitty_prompts[family].first) then
+          vim.notify(family_session_label[family] .. " did not reach a prompt in the Kitty window", vim.log.levels.WARN)
+          return false
+        end
       end
 
       local sessions = family_sessions(family, windows)
-      if #sessions == 0 and not force_select then
+      if #sessions == 0 and not force_select and not window_process_matchers[family] then
         local window = windows[1]
         if not send_kitty_text(listen_on, window.id, start_command .. "\n") then
           vim.notify("Could not start " .. family .. " in kitty slime target", vim.log.levels.WARN)
@@ -985,7 +1042,7 @@ function M.setup()
       )
       local window_title = next_repl_window_title(title, existing)
 
-      local launch, launch_error = repl_launch(launcher, window_title, window_class)
+      local launch, launch_error = repl_launch(family, launcher, window_title, window_class)
       if not launch then
         notify_launch_failure(launch_error)
         return false
@@ -1030,7 +1087,9 @@ function M.setup()
       if window_id and registered_listen_on and registered_listen_on ~= "" then
         local tree = kitty_tree(registered_listen_on)
         local window = kitty_window_by_id(tree, window_id)
-        if window and (family ~= "python" or window_matches_env(window, title)) then
+        local matches_process = window_process_matchers[family]
+        if window and (family ~= "python" or (window_matches_env(window, title) and not window_process_matchers.sage(window)))
+          and (not matches_process or matches_process(window)) then
           return bind_kitty_repl(registered_listen_on, window_id, family)
         end
         clear_slime_family_state(family)
@@ -1043,6 +1102,11 @@ function M.setup()
     local function ensure_slime_target()
       if vim.g.slime_target == "kitty" then
         return ensure_kitty_repl_window()
+      end
+      local family = current_slime_family()
+      if window_process_matchers[family] then
+        vim.notify(family_session_label[family] .. " requires the Kitty Slime target", vim.log.levels.WARN)
+        return false
       end
       return ensure_tmux_repl_pane()
     end
@@ -1398,10 +1462,50 @@ function M.setup()
       })
     end
 
+    local kitty_restart_commands = {
+      octave = 'builtin ("exec", "/bin/bash", {"-lc", %s});\r',
+      sage = 'import os; os.execv("/bin/bash", ["/bin/bash", "-lc", %s])\r',
+    }
+
+    local function restart_kitty_process(family)
+      if not ensure_kitty_repl_window() then return end
+      local config = vim.b.slime_config
+      local window = kitty_window_by_id(kitty_tree_fresh(config.listen_on), config.window_id)
+      local label = family_session_label[family]
+      if not window or not window_process_matchers[family](window) then
+        vim.notify("No " .. label .. " process in the bound Kitty window", vim.log.levels.WARN)
+        return
+      end
+
+      local spec = require("repl.specs").slime_kitty_spec(family)
+      local command = vim.json.encode("exec " .. spec.start_command)
+      local restart = kitty_restart_commands[family]:format(command)
+      local listen_on, window_id = config.listen_on, config.window_id
+      local prompts = kitty_prompts[family]
+      local previous = kitty_screen(listen_on, window_id)
+      -- Sage redraws an idle prompt after Ctrl-C without changing the screen.
+      local interrupt = family == "sage" and "\3\r" or "\3"
+      local interrupted = previous and send_kitty_text(listen_on, window_id, interrupt)
+        and wait_for_kitty_prompt(listen_on, window_id, prompts.any, previous)
+      if not interrupted or not send_kitty_text(listen_on, window_id, restart)
+        or not wait_for_kitty_prompt(listen_on, window_id, prompts.first, interrupted) then
+        vim.notify("Could not restart " .. label .. " in the bound Kitty window", vim.log.levels.ERROR)
+      end
+    end
+
     local function restart_slime_process()
+      local family = current_slime_family()
+      if kitty_restart_commands[family] then
+        if vim.g.slime_target == "kitty" then
+          restart_kitty_process(family)
+        else
+          vim.notify(family_session_label[family] .. " requires the Kitty Slime target", vim.log.levels.WARN)
+        end
+        return
+      end
       -- A block a payload left open lived in the REPL being replaced.
       slime_format.forget()
-      if current_slime_family() == "r" then
+      if family == "r" then
         vim.notify("Slime R restart is not implemented yet", vim.log.levels.WARN)
         return
       end
